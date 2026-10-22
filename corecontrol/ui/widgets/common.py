@@ -118,6 +118,11 @@ class Card(QFrame):
         self.body.setSpacing(spacing)
         self.outer.addLayout(self.body)
 
+    def align_top(self) -> "Card":
+        """Inhalt oben halten, wenn die Karte höher ist als ihr Inhalt (z. B. in einem Raster)."""
+        self.outer.addStretch(1)
+        return self
+
     def add(self, w: QWidget, stretch: int = 0) -> QWidget:
         self.body.addWidget(w, stretch)
         return w

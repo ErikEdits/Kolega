@@ -79,15 +79,17 @@ class LineChart(QWidget):
         qp = QPainter(self)
         qp.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
-        left = 46 if self.show_axes else 2
+        ymax = self._ymax()
+        font = QFont(theme.font_family, 8)
+        qp.setFont(font)
+        left = 2
+        if self.show_axes:
+            fm = qp.fontMetrics()
+            left = max(fm.horizontalAdvance(self.value_fmt(ymax * i / 4)) for i in range(5)) + 14
         top = 26 if self.show_legend else 6
         bottom = 8
         right = 6
         plot = QRectF(left, top, max(10, w - left - right), max(10, h - top - bottom))
-        ymax = self._ymax()
-
-        font = QFont(theme.font_family, 8)
-        qp.setFont(font)
         # Raster
         if self.show_axes:
             grid_pen = QPen(QColor(p.border))
@@ -377,10 +379,12 @@ class HistoryChart(QWidget):
         qp = QPainter(self)
         qp.setRenderHint(QPainter.RenderHint.Antialiasing)
         qp.setFont(QFont(theme.font_family, 8))
-        left, top, right, bottom = 56, 10, 10, 26
-        plot = QRectF(left, top, max(10, self.width() - left - right), max(10, self.height() - top - bottom))
         vals = [v for v in self.max + self.avg if v is not None]
         ymax = self.y_max or (max(vals) * 1.15 if vals else 1.0) or 1.0
+        fm = qp.fontMetrics()
+        left = max(fm.horizontalAdvance(self.value_fmt(ymax * i / 4)) for i in range(5)) + 14
+        top, right, bottom = 10, 10, 26
+        plot = QRectF(left, top, max(10, self.width() - left - right), max(10, self.height() - top - bottom))
         for i in range(5):
             y = plot.top() + plot.height() * i / 4
             qp.setPen(QPen(QColor(p.border)))

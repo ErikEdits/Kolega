@@ -329,6 +329,12 @@ QFrame[role="banner"][level="info"] {{ background: {p.soft("info", 0.12)}; borde
 QFrame[role="banner"][level="ok"] {{ background: {p.soft("ok", 0.12)}; border-color: {p.soft("ok", 0.30)}; }}
 QFrame[role="finding"] {{ background: {p.surface}; border: 1px solid {p.border}; border-radius: 12px; }}
 QFrame[role="finding"]:hover {{ border-color: {p.surface3}; }}
+QFrame[role="finding"][level="critical"] {{ border-left: 4px solid {p.crit}; }}
+QFrame[role="finding"][level="warning"] {{ border-left: 4px solid {p.warn}; }}
+QFrame[role="finding"][level="info"] {{ border-left: 4px solid {p.info}; }}
+QFrame[role="finding"][level="ok"] {{ border-left: 4px solid {p.ok}; }}
+QPushButton[role="filter"] {{ background: transparent; border: 1px solid {p.border}; border-radius: 14px; padding: 4px 12px; color: {p.text2}; }}
+QPushButton[role="filter"]:checked {{ background: {p.accent_soft}; border-color: {p.accent}; color: {p.text}; font-weight: 600; }}
 QLabel[role="chip"] {{ border-radius: 9px; padding: 2px 9px; font-size: 11px; font-weight: 600; }}
 QLabel[role="chip"][level="critical"] {{ background: {p.soft("crit", 0.18)}; color: {p.crit}; }}
 QLabel[role="chip"][level="warning"] {{ background: {p.soft("warn", 0.18)}; color: {p.warn}; }}

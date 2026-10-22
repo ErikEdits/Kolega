@@ -34,4 +34,9 @@ def take_screenshots(ctx, window, folder: str) -> None:
         state["i"] += 1
         step()
 
-    QTimer.singleShot(int(os.environ.get("CC_SHOT_START", "2500")), step)
+    start = int(os.environ.get("CC_SHOT_START", "2500"))
+    if os.environ.get("CC_SHOT_DIAG"):
+        ctx.diagnosis_finished.connect(lambda *_: QTimer.singleShot(500, step))
+        QTimer.singleShot(start, lambda: ctx.run_diagnosis(include_network=os.environ.get("CC_SHOT_DIAG") == "net"))
+    else:
+        QTimer.singleShot(start, step)
