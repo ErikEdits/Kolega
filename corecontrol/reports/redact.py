@@ -14,7 +14,7 @@ import socket
 from dataclasses import dataclass, field
 
 IPV4 = re.compile(r"(?<![\d.])((?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})(?![\d.])")
-IPV6 = re.compile(r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{1,4}:){2,7}[0-9A-Fa-f]{0,4}(?:%\w+)?(?![0-9A-Fa-f:])")
+IPV6 = re.compile(r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?:%\w+)?(?![0-9A-Fa-f:])")
 MAC = re.compile(r"(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f])")
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
@@ -48,7 +48,7 @@ class Redactor:
         out = EMAIL.sub(self.labels["email"], out)
         out = MAC.sub(self.labels["mac"], out)
         out = IPV4.sub(lambda m: m.group(0) if m.group(0) in self.keep_ips else self.labels["ip"], out)
-        out = IPV6.sub(lambda m: m.group(0) if m.group(0).count(":") < 2 or _looks_like_time(m.group(0)) else self.labels["ipv6"], out)
+        out = IPV6.sub(lambda m: m.group(0) if not _looks_like_ipv6(m.group(0)) else self.labels["ipv6"], out)
         if self.host and len(self.host) >= 2:
             out = re.sub(re.escape(self.host), self.labels["host"], out, flags=re.IGNORECASE)
         if self.user and len(self.user) >= 2:
@@ -58,6 +58,9 @@ class Redactor:
         return out
 
 
-def _looks_like_time(s: str) -> bool:
-    """Uhrzeiten wie 12:30:45 nicht als IPv6 behandeln."""
-    return bool(re.fullmatch(r"\d{1,2}:\d{2}(:\d{2})?", s))
+def _looks_like_ipv6(s: str) -> bool:
+    """Uhrzeiten (12:30:45) und reine Doppelpunkte sind keine IPv6-Adressen."""
+    core = s.split("%")[0]
+    if core.count(":") < 2 or not re.search(r"[0-9A-Fa-f]", core):
+        return False
+    return not re.fullmatch(r"\d{1,2}:\d{2}(:\d{2})?", core)
