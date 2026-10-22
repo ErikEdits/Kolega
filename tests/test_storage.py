@@ -77,7 +77,17 @@ def test_extension_categories():
     assert ext_category("x.unknownext") == "other"
 
 
+def _fake_windows_env(monkeypatch, base):
+    """Alle relevanten Windows-Ordner auf Testordner umleiten (unabhängig vom echten Rechner)."""
+    for var, sub in (("WINDIR", "Windows"), ("SystemRoot", "Windows"), ("ProgramFiles", "Program Files"),
+                     ("ProgramFiles(x86)", "Program Files (x86)"), ("ProgramData", "ProgramData"),
+                     ("USERPROFILE", "Users/max"), ("APPDATA", "Users/max/AppData/Roaming"),
+                     ("LOCALAPPDATA", "Users/max/AppData/Local"), ("TEMP", "Users/max/AppData/Local/Temp")):
+        monkeypatch.setenv(var, str(base / sub))
+
+
 def test_protection_rules(monkeypatch, tmp_path):
+    _fake_windows_env(monkeypatch, tmp_path)
     monkeypatch.setenv("WINDIR", str(tmp_path / "Windows"))
     monkeypatch.setenv("ProgramFiles", str(tmp_path / "Program Files"))
     monkeypatch.setenv("USERPROFILE", str(tmp_path / "Users" / "max"))
@@ -187,6 +197,7 @@ def test_cleanup_scan_respects_age(tmp_path, monkeypatch):
 def test_classification_ignores_temp_above_base(monkeypatch, tmp_path):
     """Ein „Temp“ oberhalb des Windows-Ordners darf die Einordnung nicht beeinflussen (gefunden im Windows-CI)."""
     base = tmp_path / "Temp" / "x"
+    _fake_windows_env(monkeypatch, tmp_path / "andere")
     monkeypatch.setenv("WINDIR", str(base / "Windows"))
     monkeypatch.setenv("LOCALAPPDATA", str(base / "Local"))
     monkeypatch.setenv("TEMP", str(tmp_path / "anderswo"))
