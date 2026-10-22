@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QProgressBar,
     QRadioButton,
     QTabWidget,
@@ -405,10 +404,10 @@ class StoragePage(Page):
             msg.warn(self, tr("sto.delete_file"), tr("sto.protected", path=path, cls=tr(f"sto.class.{cls}")))
             return
         size = self._sizes.get(path, 0)
-        msg = tr("sto.delete_confirm", cls=tr(f"sto.class.{cls}"), advice=tr(f"sto.advice.{cls}"))
+        question = tr("sto.delete_confirm", cls=tr(f"sto.class.{cls}"), advice=tr(f"sto.advice.{cls}"))
         details = tr("sto.delete_details", path=path, size=fmt.bytes_(size), type=tr(f"sto.type.{ext_category(path)}"))
         need_check = cls in ("appdata", "unknown", "user")
-        if not ConfirmDialog.ask(self, tr("sto.delete_title"), msg, details, confirm_text=tr("sto.to_trash"),
+        if not ConfirmDialog.ask(self, tr("sto.delete_title"), question, details, confirm_text=tr("sto.to_trash"),
                                  danger=False, require_check=tr("sto.delete_check") if need_check else None, icon="trash-2"):
             return
         res = cleanup.delete_files([(path, size)], [], confirmed=True, permanent=False)
@@ -549,11 +548,11 @@ class StoragePage(Page):
         listing = "\n".join(f"{fmt.bytes_(s):>10}  {p}" for p, s in files[:3000])
         if len(files) > 3000:
             listing += "\n" + tr("sto.list_more", n=len(files) - 3000)
-        msg = tr("sto.clean_confirm", n=fmt.number(len(files)), size=fmt.bytes_(total), cats=", ".join(cats),
+        question = tr("sto.clean_confirm", n=fmt.number(len(files)), size=fmt.bytes_(total), cats=", ".join(cats),
                  mode=tr("sto.mode_permanent") if permanent else tr("sto.mode_trash"))
         if permanent:
-            msg += "\n\n" + tr("sto.permanent_warning")
-        if not ConfirmDialog.ask(self, tr("sto.clean_title"), msg, listing,
+            question += "\n\n" + tr("sto.permanent_warning")
+        if not ConfirmDialog.ask(self, tr("sto.clean_title"), question, listing,
                                  confirm_text=tr("sto.clean_now"), danger=permanent,
                                  require_check=tr("sto.clean_check"), icon="trash-2"):
             return

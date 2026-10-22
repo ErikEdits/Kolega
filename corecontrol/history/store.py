@@ -95,7 +95,7 @@ class HistoryStore:
         cutoff_minutes = now - MINUTE_KEEP_DAYS * 86400
         cutoff_all = now - retention_days * 86400
         with self._lock:
-            old = self._conn.execute(f"SELECT * FROM minute WHERE ts < ? ORDER BY ts", (cutoff_minutes,)).fetchall()
+            old = self._conn.execute("SELECT * FROM minute WHERE ts < ? ORDER BY ts", (cutoff_minutes,)).fetchall()
             if old:
                 buckets: dict[int, list] = {}
                 for r in old:

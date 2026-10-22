@@ -157,3 +157,142 @@ def test_no_attribute_shadows_qt_methods(window):
         if clash:
             problems.append((type(obj).__name__, sorted(clash)))
     assert problems == []
+
+
+# ---- Abläufe mit Bestätigung (Dialog wird simuliert) ------------------------------------
+
+@pytest.fixture()
+def dialogs(monkeypatch):
+    """Ersetzt Bestätigungs- und Meldungsfenster, merkt sich ihre Aufrufe."""
+    from corecontrol.ui import msg
+    from corecontrol.ui.dialogs import ConfirmDialog
+
+    calls = {"ask": [], "info": [], "warn": [], "answer": True}
+
+    def ask(parent, title, message, *args, **kwargs):
+        calls["ask"].append((title, message, args, kwargs))
+        return calls["answer"]
+
+    monkeypatch.setattr(ConfirmDialog, "ask", staticmethod(ask))
+    monkeypatch.setattr(msg, "info", lambda parent, title, text: calls["info"].append(text))
+    monkeypatch.setattr(msg, "warn", lambda parent, title, text: calls["warn"].append(text))
+    return calls
+
+
+def test_confirm_dialog_needs_check(window):
+    from corecontrol.ui.dialogs import ConfirmDialog
+
+    w, ctx, qapp = window
+    d = ConfirmDialog(w, "Titel", "Text", "Details", require_check="Geprüft")
+    assert not d.ok.isEnabled()
+    d.check.setChecked(True)
+    assert d.ok.isEnabled()
+    d.reject()
+
+
+def test_end_process_flow(window, dialogs):
+    import subprocess
+    import sys
+
+    import psutil
+
+    from corecontrol.system.processes import ProcessRow
+
+    w, ctx, qapp = window
+    w.navigate("processes")
+    page = w.page("processes")
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        p = psutil.Process(child.pid)
+        row = ProcessRow(child.pid, p.name(), 0.0, 0, "", p.exe(), "running", p.create_time(), False)
+        page._selected = lambda: row
+
+        dialogs["answer"] = False
+        page._end()
+        assert len(dialogs["ask"]) == 1 and child.poll() is None  # abgebrochen → läuft weiter
+
+        dialogs["answer"] = True
+        page._end()
+        child.wait(10)
+        assert dialogs["info"] and not dialogs["warn"]
+    finally:
+        if child.poll() is None:
+            child.kill()
+
+
+def test_delete_single_file_flow(window, dialogs, tmp_path, monkeypatch):
+    from corecontrol.storage import cleanup
+
+    w, ctx, qapp = window
+    w.navigate("storage")
+    page = w.page("storage")
+    f = tmp_path / "gross.bin"
+    f.write_bytes(b"x" * 100)
+    page.files_table.selected_key = lambda: str(f)
+    page._sizes = {str(f): 100}
+    page._render_scan = lambda: None
+    seen = []
+
+    def fake_delete(files, roots, confirmed, permanent=False, ctx=None):
+        seen.append((files, confirmed, permanent))
+        return cleanup.DeleteResult(deleted=1, deleted_bytes=100)
+
+    monkeypatch.setattr(cleanup, "delete_files", fake_delete)
+    dialogs["answer"] = False
+    page._delete_file()
+    assert not seen
+    dialogs["answer"] = True
+    page.scan_result = type("R", (), {"largest": [(100, str(f))]})()
+    page._delete_file()
+    assert seen == [([(str(f), 100)], True, False)]  # nur bestätigt, in den Papierkorb
+    assert dialogs["info"]
+    assert page.scan_result.largest == []
+
+
+def test_cleanup_flow(window, dialogs, tmp_path, monkeypatch):
+    from corecontrol.storage import cleanup
+
+    w, ctx, qapp = window
+    w.navigate("storage")
+    page = w.page("storage")
+    files = [(str(tmp_path / "a.tmp"), 10), (str(tmp_path / "b.tmp"), 20)]
+    page._selected_files = lambda: (files, [str(tmp_path)])
+    page._scan_cleanup = lambda: None
+    seen = []
+
+    def fake_delete(f, roots, confirmed, permanent=False, ctx=None):
+        seen.append((f, roots, confirmed, permanent))
+        return cleanup.DeleteResult(deleted=2, deleted_bytes=30)
+
+    monkeypatch.setattr(cleanup, "delete_files", fake_delete)
+    dialogs["answer"] = False
+    page._clean()
+    _wait(qapp, 0.3)
+    assert not seen
+    dialogs["answer"] = True
+    page._clean()
+    end = time.time() + 5
+    while not dialogs["info"] and time.time() < end:
+        _wait(qapp, 0.05)
+    assert seen == [(files, [str(tmp_path)], True, False)]
+    assert dialogs["info"]
+    # Die Zusammenfassung nennt jede Datei
+    _title, _message, args, kwargs = dialogs["ask"][-1]
+    assert all(p in args[0] for p, _ in files)
+    assert kwargs.get("require_check")
+
+
+def test_settings_import_flow(window, dialogs, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+
+    w, ctx, qapp = window
+    w.navigate("settings")
+    page = w.page("settings")
+    path = tmp_path / "export.json"
+    ctx.settings.set("thresholds.ram_warn", 77)
+    assert ctx.settings.export_to(path)
+    ctx.settings.set("thresholds.ram_warn", 90)
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: (str(path), "")))
+    page._import()
+    assert ctx.settings.get("thresholds.ram_warn") == 77
+    assert dialogs["info"] and not dialogs["warn"]

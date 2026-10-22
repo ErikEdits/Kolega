@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtWidgets import QHBoxLayout, QMessageBox
+from PySide6.QtWidgets import QHBoxLayout
 
 from corecontrol.core.platform import IS_WINDOWS, is_admin, relaunch_as_admin, show_in_explorer
 from corecontrol.i18n import tr
@@ -14,7 +14,7 @@ from corecontrol.ui.bus import on_refresh
 from corecontrol.ui.dialogs import ConfirmDialog
 from corecontrol.ui import msg
 from corecontrol.ui.pages.base import Page
-from corecontrol.ui.widgets.common import Banner, Card, button, label
+from corecontrol.ui.widgets.common import Banner, button, label
 from corecontrol.ui.widgets.table import DataTable
 from corecontrol.ui.workers import run_task
 

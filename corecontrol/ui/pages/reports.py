@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtWidgets import QCheckBox, QFileDialog, QHBoxLayout, QMessageBox, QPlainTextEdit
+from PySide6.QtWidgets import QCheckBox, QFileDialog, QHBoxLayout, QPlainTextEdit
 
 from corecontrol import REPO_URL
 from corecontrol.core import paths

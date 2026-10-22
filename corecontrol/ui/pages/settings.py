@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QSpinBox,
     QToolButton,
     QVBoxLayout,
@@ -28,7 +27,7 @@ from corecontrol.core import fmt, paths
 from corecontrol.core.platform import IS_WINDOWS, open_path, open_url
 from corecontrol.core.settings import TILE_IDS
 from corecontrol.i18n import tr
-from corecontrol.ui.bus import bind_text, bus, on_refresh
+from corecontrol.ui.bus import on_refresh
 from corecontrol.ui import msg
 from corecontrol.ui.pages.base import Page
 from corecontrol.ui.theme import ACCENT_PRESETS, theme
@@ -371,10 +370,10 @@ class SettingsPage(Page):
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             msg.warn(self, tr("set.import"), tr("set.import_failed", error=str(exc)))
             return
-        msg = tr("set.import_ok")
+        text = tr("set.import_ok")
         if warnings:
-            msg += "\n\n" + tr("set.import_warnings", n=len(warnings))
-        msg.info(self, tr("set.import"), msg)
+            text += "\n\n" + tr("set.import_warnings", n=len(warnings))
+        msg.info(self, tr("set.import"), text)
         self._fill_tiles()
 
     def _reset(self):

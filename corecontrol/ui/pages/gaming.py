@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFileDialog, QGridLayout, QHBoxLayout, QLineEdit, QMessageBox, QSlider, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFileDialog, QGridLayout, QHBoxLayout, QLineEdit, QSlider, QVBoxLayout, QWidget
 
 from corecontrol.core import fmt
 from corecontrol.gaming import library
@@ -17,7 +17,7 @@ from corecontrol.ui.dialogs import ConfirmDialog
 from corecontrol.ui.mini_monitor import is_open, toggle_mini_monitor
 from corecontrol.ui import msg
 from corecontrol.ui.pages.base import Page
-from corecontrol.ui.widgets.common import Card, Chip, SettingRow, Toggle, button, icon_label, label
+from corecontrol.ui.widgets.common import Card, SettingRow, Toggle, button, icon_label, label
 from corecontrol.ui.widgets.table import DataTable
 from corecontrol.ui.workers import run_task
 

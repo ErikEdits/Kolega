@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from corecontrol.core.settings import defaults
 from corecontrol.diagnostics import rules
 from corecontrol.diagnostics.engine import apply_rules, summarize_live
-from corecontrol.diagnostics.eventlog import EventGroup, EventRecord, EventSummary
+from corecontrol.diagnostics.eventlog import EventGroup, EventSummary
 from corecontrol.diagnostics.rules import DiagInput, LiveSummary, ProcInfo
 from corecontrol.monitoring.models import GpuSample, Sample
 from corecontrol.network.tests import DnsResult, HttpResult, NetworkResult, PingStats, WifiInfo
@@ -148,6 +148,38 @@ def test_windows_versions():
     assert keys == {"diag.windows_ok.title", "diag.pending_reboot.title", "diag.uptime_long.title"}
 
 
+def test_windows_editions():
+    base = {"platform": "windows"}
+    when = datetime(2026, 10, 22).timestamp()
+    # Echter Fall aus dem Windows-CI: Server 2025 hat Build 26100 wie Windows 11 24H2
+    d = mk(hw={**base, "os": {"name": "Windows Server 2025 Datacenter", "build": 26100, "family": "win11",
+                              "edition": "ServerDatacenter", "display_version": "24H2"}}, now=when)
+    assert rules.rule_windows(d) == [] and [a for a, _ in d.skipped] == ["windows"]
+    d = mk(hw={**base, "os": {"name": "Windows Server 2019", "build": 17763, "edition": "ServerStandard"}}, now=when)
+    assert rules.rule_windows(d) == []
+    d = mk(hw={**base, "os": {"name": "Windows 10 Enterprise LTSC 2021", "build": 19044, "family": "win10",
+                              "edition": "EnterpriseS"}}, now=when)
+    assert rules.rule_windows(d) == [] and d.skipped
+    # 24H2: Home/Pro seit 13.10.2026 ohne Support, Enterprise/Education bis 12.10.2027
+    pro = {"name": "Windows 11 Pro", "build": 26100, "family": "win11", "edition": "Professional"}
+    assert rules.rule_windows(mk(hw={**base, "os": pro}, now=when))[0].title.key == "diag.win11_eos.title"
+    ent = {**pro, "name": "Windows 11 Enterprise", "edition": "Enterprise"}
+    assert rules.rule_windows(mk(hw={**base, "os": ent}, now=when))[0].title.key == "diag.windows_ok.title"
+    pro_edu = {**pro, "name": "Windows 11 Pro Education", "edition": "ProfessionalEducation"}
+    assert rules.rule_windows(mk(hw={**base, "os": pro_edu}, now=when))[0].title.key == "diag.win11_eos.title"
+    assert rules.windows_edition_kind({"name": "Windows 11 Pro Education"}) == "consumer"
+    assert rules.windows_edition_kind({"name": "Windows 11 Enterprise"}) == "enterprise"
+    edu = {**pro, "name": "Windows 11 Education", "edition": "Education"}
+    assert rules.rule_windows(mk(hw={**base, "os": edu}, now=datetime(2027, 11, 1).timestamp()))[0].severity == "warning"
+
+
+def test_microsoft_display_driver_date_is_ignored():
+    """Echter Fall aus dem Windows-CI: „Microsoft Hyper-V Video“ mit Treiberdatum 21.06.2006."""
+    hw = {"platform": "windows", "gpus": [{"name": "Microsoft Hyper-V Video", "vendor": "other",
+                                           "driver_version": "10.0.26100.1150", "driver_date": datetime(2006, 6, 21)}]}
+    assert rules.rule_gpu_driver(mk(hw=hw)) == []
+
+
 def test_gpu_driver_age_is_low_confidence_info():
     hw = {"gpus": [{"name": "GeForce RTX", "vendor": "nvidia", "driver_version": "1.0",
                     "driver_date": datetime.now() - timedelta(days=500)}]}
@@ -177,12 +209,52 @@ def test_network_ok():
 
 
 def test_network_offline_cases():
-    assert ids(rules.rule_network(mk(net=net(any_adapter_up=False)))) == {("net", "critical")}
+    offline = dict(any_adapter_up=False, gateway=None, gateway_ping=None, internet_pings=[ping("1.1.1.1", [])],
+                   dns=[DnsResult("www.microsoft.com", False)], http=HttpResult(False))
+    out = rules.rule_network(mk(net=net(**offline)))
+    assert ids(out) == {("net", "critical")} and out[0].title.key == "diag.net_no_adapter.title"
     out = rules.rule_network(mk(net=net(gateway_ping=ping("192.168.1.1", []), internet_pings=[ping("1.1.1.1", [])],
                                         http=HttpResult(False))))
     assert out[0].title.key == "diag.net_gateway_down.title"
     out = rules.rule_network(mk(net=net(internet_pings=[ping("1.1.1.1", [])], http=HttpResult(False))))
     assert out[0].title.key == "diag.net_no_internet.title"
+
+
+def test_virtual_machine_network_is_not_reported_offline():
+    """Echter Fall aus dem Windows-CI (Azure-VM): Adapter heißt „Microsoft Hyper-V Network Adapter“,
+    ICMP ist gesperrt, DNS und Webtest funktionieren."""
+    from corecontrol.network.tests import AdapterInfo, has_connected_adapter
+
+    adapters = [AdapterInfo("Ethernet 3", "virtual", True, None, ipv4=["10.1.0.4"], gateway=["10.1.0.1"]),
+                AdapterInfo("vEthernet (nat)", "virtual", True, None, ipv4=["172.20.0.1"]),
+                AdapterInfo("Loopback Pseudo-Interface 1", "loopback", True, None, ipv4=["127.0.0.1"])]
+    assert has_connected_adapter(adapters)
+    vm = net(adapters=adapters, any_adapter_up=has_connected_adapter(adapters), gateway="10.1.0.1",
+             gateway_ping=ping("10.1.0.1", [], sent=4), internet_pings=[ping("1.1.1.1", [], sent=4)])
+    sev = {f.severity for f in rules.rule_network(mk(net=vm))}
+    assert "critical" not in sev and "warning" not in sev
+    # Auch wenn die Adapter-Erkennung danebenliegt: Funktioniert das Internet, ist man nicht offline.
+    out = rules.rule_network(mk(net=net(any_adapter_up=False)))
+    assert all(f.title.key != "diag.net_no_adapter.title" for f in out)
+
+
+def test_connected_adapter_detection():
+    from corecontrol.network.tests import AdapterInfo, has_connected_adapter
+
+    assert not has_connected_adapter([AdapterInfo("Ethernet", "ethernet", True, 1000, ipv4=["169.254.10.2"])])
+    assert not has_connected_adapter([AdapterInfo("Ethernet", "ethernet", False, None, ipv4=["192.168.1.5"])])
+    assert not has_connected_adapter([AdapterInfo("vEthernet (WSL)", "virtual", True, None, ipv4=["172.30.0.1"])])
+    assert has_connected_adapter([AdapterInfo("WLAN", "wifi", True, 300, ipv4=["192.168.1.5"])])
+
+
+def test_link_speed():
+    from corecontrol.network.tests import link_speed_mbps
+
+    assert link_speed_mbps(1000, None) == 1000
+    assert link_speed_mbps(4294, "10000000000") == 10000   # 32-Bit-Grenze von psutil, WMI hat den echten Wert
+    assert link_speed_mbps(4294, None) is None
+    assert link_speed_mbps(0, "9223372036854775807") is None  # Platzhalter
+    assert link_speed_mbps(None, "abc") is None
 
 
 def test_dns_failure_detected_separately():

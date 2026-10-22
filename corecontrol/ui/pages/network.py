@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QProgressBar, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGridLayout, QProgressBar, QVBoxLayout, QWidget
 
 from corecontrol.core import fmt
 from corecontrol.core.platform import IS_WINDOWS, open_url
@@ -207,7 +207,6 @@ class NetworkPage(Page):
             self.ad_grid.addWidget(label("common.na", "muted"), 0, 0)
             return
         for i, a in enumerate(shown[:8]):
-            box = QVBoxLayout()
             title = label(None, "h3", text=f"{a.name}")
             sub = label(None, "faint", text=f"{tr('net.kind.' + a.kind)} · {tr('net.up') if a.up else tr('net.down')}")
             kv = KeyValueGrid()

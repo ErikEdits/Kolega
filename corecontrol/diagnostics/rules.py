@@ -440,11 +440,13 @@ def rule_gpu_driver(d: DiagInput) -> list[Finding]:
         return out
     for gpu in gpus:
         dt = gpu.get("driver_date")
-        if not isinstance(dt, datetime):
-            continue
-        age = (datetime.fromtimestamp(d.now) - dt).days
         vendor = gpu.get("vendor", "")
         url = VENDOR_DRIVER_URLS.get(vendor)
+        # Nur NVIDIA/AMD/Intel bewerten: Microsoft-Treiber (z. B. in virtuellen Maschinen) tragen
+        # pauschal das Datum 21.06.2006, ihr Alter sagt nichts aus.
+        if not isinstance(dt, datetime) or url is None:
+            continue
+        age = (datetime.fromtimestamp(d.now) - dt).days
         params = dict(gpu=gpu.get("name", ""), version=gpu.get("driver_version", ""), date=Date(dt), days=age)
         acts = [("action.driver_page", f"url:{url}")] if url else []
         if age > 365:
@@ -458,15 +460,41 @@ def rule_gpu_driver(d: DiagInput) -> list[Finding]:
 # --------------------------------------------------------------------------------
 # Windows
 
-# Ende des Supports für Home/Pro laut Microsoft-Lebenszyklus (Stand: Oktober 2026).
-# Enterprise/Education haben teils längeren Support.
+# Ende des Supports laut Microsoft-Lebenszyklus (Stand: Oktober 2026).
+# Home/Pro (und alle anderen Editionen außer Enterprise/Education):
 WINDOWS_EOS = {
     19045: date(2025, 10, 14),  # Windows 10 22H2 (letzte Win-10-Version)
     22000: date(2023, 10, 10),  # Windows 11 21H2
     22621: date(2024, 10, 8),   # Windows 11 22H2
     22631: date(2025, 11, 11),  # Windows 11 23H2
     26100: date(2026, 10, 13),  # Windows 11 24H2
+    26200: date(2027, 10, 12),  # Windows 11 25H2
 }
+# Enterprise/Education werden länger unterstützt:
+WINDOWS_EOS_ENTERPRISE = {
+    19045: date(2025, 10, 14),
+    22000: date(2024, 10, 8),
+    22621: date(2025, 10, 14),
+    22631: date(2026, 11, 10),
+    26100: date(2027, 10, 12),
+    26200: date(2028, 10, 10),
+}
+
+
+def windows_edition_kind(os_: dict) -> str:
+    """server, ltsc (eigene Lebenszyklen), enterprise (Enterprise/Education) oder consumer."""
+    edition = str(os_.get("edition") or "").lower()
+    name = str(os_.get("name") or "").lower()
+    if "server" in edition or "server" in name:
+        return "server"
+    if edition.endswith(("enterprises", "enterprisesn")) or "ltsc" in name or "ltsb" in name:
+        return "ltsc"
+    # „Pro Education“ und „Pro for Workstations“ folgen den Home/Pro-Fristen.
+    if edition:
+        return "enterprise" if edition.startswith(("enterprise", "education", "iotenterprise")) else "consumer"
+    if " pro" not in name and ("enterprise" in name or "education" in name):
+        return "enterprise"
+    return "consumer"
 
 
 def rule_windows(d: DiagInput) -> list[Finding]:
@@ -479,10 +507,13 @@ def rule_windows(d: DiagInput) -> list[Finding]:
     today = datetime.fromtimestamp(d.now).date()
     params = dict(name=os_.get("name", "Windows"), version=os_.get("display_version", ""), build=build)
     acts = [("action.windows_update", "url:ms-settings:windowsupdate")]
-    if os_.get("family") == "win10" or (build and build < 22000):
+    kind = windows_edition_kind(os_)
+    if kind in ("server", "ltsc"):
+        d.skipped.append(("windows", T(f"diag.skip.windows_{kind}")))
+    elif os_.get("family") == "win10" or (build and build < 22000):
         out.append(make("windows_version", "win10_eos", "system", "warning", params=params, confidence="high", actions=acts))
     else:
-        eos = WINDOWS_EOS.get(build)
+        eos = (WINDOWS_EOS_ENTERPRISE if kind == "enterprise" else WINDOWS_EOS).get(build)
         if eos and today > eos:
             out.append(make("windows_version", "win11_eos", "system", "warning", params=dict(params, date=Date(datetime.combine(eos, datetime.min.time()))),
                             confidence="medium", actions=acts))
@@ -536,7 +567,7 @@ def rule_network(d: DiagInput) -> list[Finding]:
         return []
     out: list[Finding] = []
     acts = [("action.open_network", "nav:network")]
-    if not net.any_adapter_up:
+    if not net.any_adapter_up and not net.internet_ok:
         return [make("net", "net_no_adapter", "network", "critical", actions=acts + [("action.network_settings", "url:ms-settings:network")])]
     gw = net.gateway_ping
     inet = net.best_internet

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMessageBox
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit
 
 from corecontrol.core import fmt
 from corecontrol.core.platform import IS_WINDOWS, show_in_explorer
@@ -16,7 +16,7 @@ from corecontrol.ui.bus import on_refresh
 from corecontrol.ui.dialogs import ConfirmDialog
 from corecontrol.ui import msg
 from corecontrol.ui.pages.base import Page
-from corecontrol.ui.widgets.common import Card, Chip, button, label
+from corecontrol.ui.widgets.common import Chip, button, label
 from corecontrol.ui.widgets.table import DataTable
 from corecontrol.ui.workers import run_task
 
@@ -125,11 +125,11 @@ class ProcessesPage(Page):
             return
         details = tr("proc.confirm_details", name=r.name, pid=r.pid, path=r.exe or tr("common.na"), user=r.user or tr("common.na"),
                      ram=fmt.bytes_(r.mem))
-        msg = tr("proc.confirm_text")
+        question = tr("proc.confirm_text")
         caution = CAUTION.get(r.name.lower())
         if caution:
-            msg += "\n\n" + tr(caution)
-        if not ConfirmDialog.ask(self, tr("proc.confirm_title", name=r.name), msg, details,
+            question += "\n\n" + tr(caution)
+        if not ConfirmDialog.ask(self, tr("proc.confirm_title", name=r.name), question, details,
                                  confirm_text=tr("proc.end_now"), danger=True):
             return
         result = end_process(r.pid, r.name, r.create_time, confirmed=True)

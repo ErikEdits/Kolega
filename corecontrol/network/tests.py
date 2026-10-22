@@ -15,7 +15,6 @@ import socket
 import statistics
 import struct
 import subprocess
-import sys
 import time
 import urllib.request
 from dataclasses import dataclass, field
@@ -326,6 +325,23 @@ def _kind(name: str, desc: str) -> str:
     return "other"
 
 
+def link_speed_mbps(psutil_mbps: int | None, wmi_bps) -> int | None:
+    """Verbindungsgeschwindigkeit in Mbit/s.
+
+    psutil liest unter Windows einen 32-Bit-Wert; bei schnellen (oder virtuellen) Adaptern
+    bleibt er bei 4294 stehen. Dann gilt der 64-Bit-Wert aus WMI, sonst „unbekannt“.
+    """
+    try:
+        wmi_mbps = int(wmi_bps) // 1_000_000 if wmi_bps not in (None, "") else None
+    except (TypeError, ValueError):
+        wmi_mbps = None
+    if psutil_mbps and psutil_mbps < 4294:
+        return int(psutil_mbps)
+    if wmi_mbps and wmi_mbps < 10_000_000:   # sehr große Werte sind Platzhalter
+        return wmi_mbps
+    return None
+
+
 def list_adapters() -> list[AdapterInfo]:
     stats = psutil.net_if_stats()
     addrs = psutil.net_if_addrs()
@@ -334,8 +350,8 @@ def list_adapters() -> list[AdapterInfo]:
         try:
             from corecontrol.system import wmi
 
-            nics = wmi.query("SELECT NetConnectionID, Description, MACAddress, Index FROM Win32_NetworkAdapter "
-                             "WHERE NetConnectionID IS NOT NULL", ["NetConnectionID", "Description", "MACAddress", "Index"])
+            nics = wmi.query("SELECT NetConnectionID, Description, MACAddress, Index, Speed FROM Win32_NetworkAdapter "
+                             "WHERE NetConnectionID IS NOT NULL", ["NetConnectionID", "Description", "MACAddress", "Index", "Speed"])
             cfgs = {r["Index"]: r for r in wmi.query(
                 "SELECT Index, DefaultIPGateway, DNSServerSearchOrder, DHCPEnabled FROM Win32_NetworkAdapterConfiguration",
                 ["Index", "DefaultIPGateway", "DNSServerSearchOrder", "DHCPEnabled"])}
@@ -346,6 +362,7 @@ def list_adapters() -> list[AdapterInfo]:
                     "gateway": [g for g in (c.get("DefaultIPGateway") or []) if g],
                     "dns": [d for d in (c.get("DNSServerSearchOrder") or []) if d],
                     "dhcp": c.get("DHCPEnabled"),
+                    "speed_bps": n.get("Speed"),
                 }
         except Exception as exc:
             log.info("WMI-Netzwerkdetails nicht verfügbar: %s", exc)
@@ -353,7 +370,7 @@ def list_adapters() -> list[AdapterInfo]:
     for name, st in stats.items():
         info = wmi_info.get(name, {})
         a = AdapterInfo(name=name, kind=_kind(name, info.get("description", "")), up=bool(st.isup),
-                        speed_mbps=int(st.speed) if st.speed else None, description=info.get("description", ""),
+                        speed_mbps=link_speed_mbps(st.speed, info.get("speed_bps")), description=info.get("description", ""),
                         gateway=info.get("gateway", []), dns=info.get("dns", []), dhcp=info.get("dhcp"))
         for ad in addrs.get(name, []):
             if ad.family == socket.AF_INET:
@@ -427,6 +444,23 @@ def wifi_info() -> WifiInfo:
     return parse_netsh_wlan(text)
 
 
+def has_connected_adapter(adapters: list[AdapterInfo]) -> bool:
+    """Gibt es einen aktiven Adapter mit gültiger IPv4-Adresse?
+
+    Virtuelle Adapter zählen mit, wenn sie ein Standard-Gateway haben: In virtuellen
+    Maschinen und bei Hyper-V-Netzwerkswitches läuft die echte Verbindung über sie.
+    169.254.x.x (automatische Adresse ohne DHCP) zählt nicht als Verbindung.
+    """
+    for a in adapters:
+        if not a.up or a.kind == "loopback":
+            continue
+        if not any(ip and not ip.startswith("169.254.") for ip in a.ipv4):
+            continue
+        if a.kind in ("ethernet", "wifi", "other") or a.gateway:
+            return True
+    return False
+
+
 # ---- Gesamttest ---------------------------------------------------------------
 def run_network_test(targets: list[str], dns_domains: list[str], ping_count: int = 10, ctx=None,
                      progress=None) -> NetworkResult:
@@ -439,7 +473,7 @@ def run_network_test(targets: list[str], dns_domains: list[str], ping_count: int
     step("adapters")
     try:
         r.adapters = list_adapters()
-        r.any_adapter_up = any(a.up and a.kind in ("ethernet", "wifi", "other") and a.ipv4 for a in r.adapters)
+        r.any_adapter_up = has_connected_adapter(r.adapters)
     except Exception as exc:
         r.errors.append(f"adapters: {exc}")
     try:

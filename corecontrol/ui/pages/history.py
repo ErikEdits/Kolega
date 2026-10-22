@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QPushButton
+from PySide6.QtWidgets import QButtonGroup, QHBoxLayout
 
 from corecontrol.core import fmt
 from corecontrol.i18n import tr

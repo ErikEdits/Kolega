@@ -11,3 +11,12 @@ markers = [
     "windows: Tests, die echte Windows-Schnittstellen benötigen (laufen nur unter Windows)",
     "gui: Tests, die die Qt-Oberfläche starten",
 ]
+
+[tool.ruff]
+line-length = 130
+target-version = "py310"
+
+[tool.ruff.lint]
+# Nur Fehlerklassen, die echte Abstürze/Fehlverhalten verursachen (z. B. eine Variable,
+# die ein importiertes Modul verdeckt), keine reinen Stilregeln.
+select = ["F", "E9", "B006", "B008", "B023", "PLE"]

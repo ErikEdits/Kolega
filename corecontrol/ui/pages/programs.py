@@ -12,7 +12,7 @@ from corecontrol.core.platform import IS_WINDOWS, open_path, open_url
 from corecontrol.i18n import tr
 from corecontrol.system.programs import list_programs
 from corecontrol.system.tools import TOOLS, run_tool
-from corecontrol.ui.bus import bind_text, on_refresh
+from corecontrol.ui.bus import on_refresh
 from corecontrol.ui.pages.base import Page
 from corecontrol.ui.widgets.common import button, icon_label, label, set_role
 from corecontrol.ui.widgets.table import DataTable

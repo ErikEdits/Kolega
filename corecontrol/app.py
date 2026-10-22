@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import getpass
 import logging
-import os
 import sys
 import time
 
@@ -110,7 +109,6 @@ def main(argv: list[str] | None = None) -> int:
     ctx.sampler.start()
 
     from corecontrol.ui.alerts import AlertMonitor
-    from corecontrol.ui.bus import bus
     from corecontrol.ui.main_window import MainWindow
     from corecontrol.ui.tray import Tray
 

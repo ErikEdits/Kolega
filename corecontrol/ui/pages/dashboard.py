@@ -13,13 +13,13 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from corecontrol.core import fmt
-from corecontrol.i18n import T, tr
-from corecontrol.ui import anim, icons
+from corecontrol.i18n import tr
+from corecontrol.ui import anim
 from corecontrol.ui.bus import bus, on_refresh
 from corecontrol.ui.pages.base import Page
 from corecontrol.ui.theme import theme
 from corecontrol.ui.widgets.charts import LineChart, Sparkline
-from corecontrol.ui.widgets.common import Card, KeyValueGrid, button, icon_label, label, set_role
+from corecontrol.ui.widgets.common import Card, button, icon_label, label, set_role
 from corecontrol.ui.widgets.controls import BarRow, GaugeRing, IconBadge
 
 SPANS = {"cpu": 3, "gpu": 3, "ram": 3, "storage": 3, "load": 6, "temps": 3, "fans": 3,

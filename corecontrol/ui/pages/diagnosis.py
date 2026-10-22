@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget
 
 from corecontrol.core import fmt
 from corecontrol.diagnostics.engine import STEPS
@@ -13,7 +13,7 @@ from corecontrol.ui.bus import bind_text, bus, on_refresh
 from corecontrol.ui.pages.base import Page
 from corecontrol.ui.widgets.controls import AnimatedButton
 from corecontrol.ui.theme import theme
-from corecontrol.ui.widgets.common import Card, Chip, EmptyState, button, icon_label, label, set_role
+from corecontrol.ui.widgets.common import Card, Chip, EmptyState, button, label, set_role
 from corecontrol.ui.widgets.finding import FindingCard
 
 
