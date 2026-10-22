@@ -1,0 +1,6 @@
+# Laufzeit-Abhängigkeiten von CoreControl (alle kostenlos, Lizenzen siehe corecontrol/assets/THIRD_PARTY_LICENSES.md)
+PySide6-Essentials>=6.6,<7
+psutil>=5.9
+Send2Trash>=1.8
+nvidia-ml-py>=12.535
+pywin32>=306; sys_platform == "win32"

@@ -1,0 +1,13 @@
+[project]
+name = "corecontrol"
+dynamic = ["version"]
+description = "CoreControl – Windows-PC-Control-Center mit verständlicher Systemdiagnose"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-only" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "windows: Tests, die echte Windows-Schnittstellen benötigen (laufen nur unter Windows)",
+    "gui: Tests, die die Qt-Oberfläche starten",
+]
