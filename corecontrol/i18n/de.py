@@ -1368,4 +1368,6 @@ STRINGS: dict[str, object] = {
     "diagp.no_problems_checked": "Keine Probleme gefunden. Diese Bereiche wurden geprüft:",
     "diag.skip.windows_server": "Windows-Version: Server-Editionen haben eigene Supportzeiträume und werden hier nicht bewertet.",
     "diag.skip.windows_ltsc": "Windows-Version: LTSC-Editionen haben eigene, längere Supportzeiträume und werden hier nicht bewertet.",
+    "diag.net_ok_noping.title": "Internetverbindung funktioniert",
+    "diag.net_ok_noping.detected": "Internet erreichbar (Webseitentest erfolgreich), DNS funktioniert. Antwortzeit und Paketverlust sind nicht messbar, weil Ping blockiert wird.",
 }

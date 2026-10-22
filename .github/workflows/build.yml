@@ -40,6 +40,8 @@ jobs:
           python-version: "3.12"
       - name: Abhängigkeiten
         run: pip install -r requirements-dev.txt
+      - name: Fehlerprüfung (ruff)
+        run: ruff check corecontrol tools tests
       - name: Tests (inkl. echter Windows-Schnittstellen)
         env:
           QT_QPA_PLATFORM: offscreen

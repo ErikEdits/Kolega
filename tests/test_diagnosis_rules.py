@@ -267,6 +267,8 @@ def test_ping_blocked_but_web_ok_is_not_offline():
     keys = {f.title.key for f in out}
     assert "diag.net_ping_blocked.title" in keys
     assert "diag.net_no_internet.title" not in keys
+    # Kein „Paketverlust 100 %“, wenn Ping nur gesperrt ist
+    assert "diag.net_ok_noping.title" in keys and "diag.net_ok.title" not in keys
 
 
 def test_packet_loss_local_vs_internet():

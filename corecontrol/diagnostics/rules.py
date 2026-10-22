@@ -615,9 +615,12 @@ def rule_network(d: DiagInput) -> list[Finding]:
         elif wifi.signal_pct < 60:
             out.append(make("wifi_signal", "wifi_medium", "network", "info", params=dict(pct=Pct(wifi.signal_pct), ssid=wifi.ssid)))
     if not any(f.severity in ("critical", "warning") for f in out):
-        out.append(make("net", "net_ok", "network", "ok",
-                        params=dict(ms=Ms(inet.avg) if inet and inet.avg is not None else "–",
-                                    loss=Pct(inet.loss_pct) if inet and inet.loss_pct is not None else "–")))
+        if pings_ok:
+            out.append(make("net", "net_ok", "network", "ok",
+                            params=dict(ms=Ms(inet.avg) if inet and inet.avg is not None else "–",
+                                        loss=Pct(inet.loss_pct) if inet and inet.loss_pct is not None else "–")))
+        else:
+            out.append(make("net", "net_ok_noping", "network", "ok"))
     return out
 
 
