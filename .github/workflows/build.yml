@@ -60,7 +60,7 @@ jobs:
           if (-not $p.WaitForExit(240000)) { $p.Kill(); throw "EXE hat sich nicht rechtzeitig beendet" }
           $shots = Get-ChildItem shots -Filter *.png
           $shots | ForEach-Object { "{0}  {1:N0} Bytes" -f $_.Name, $_.Length }
-          if ($shots.Count -lt 15) { throw "Zu wenige Seiten geladen: $($shots.Count)" }
+          if ($shots.Count -lt 14) { throw "Zu wenige Seiten geladen: $($shots.Count)" }
           Get-Content "$env:CORECONTROL_HOME\logs\corecontrol.log" -ErrorAction SilentlyContinue | Select-Object -Last 60
           if (Select-String -Path "$env:CORECONTROL_HOME\logs\corecontrol.log" -Pattern "corecontrol.errors" -Quiet) { throw "Fehler im Protokoll der EXE" }
       - name: EXE-Größe

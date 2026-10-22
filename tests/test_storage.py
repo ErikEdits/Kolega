@@ -182,3 +182,15 @@ def test_cleanup_scan_respects_age(tmp_path, monkeypatch):
     cats = cleanup.scan_categories(min_age_days=2)
     assert [f.path for f in cats[0].files] == [str(old)]
     assert cats[0].total == 100
+
+
+def test_classification_ignores_temp_above_base(monkeypatch, tmp_path):
+    """Ein „Temp“ oberhalb des Windows-Ordners darf die Einordnung nicht beeinflussen (gefunden im Windows-CI)."""
+    base = tmp_path / "Temp" / "x"
+    monkeypatch.setenv("WINDIR", str(base / "Windows"))
+    monkeypatch.setenv("LOCALAPPDATA", str(base / "Local"))
+    monkeypatch.setenv("TEMP", str(tmp_path / "anderswo"))
+    assert classify(str(base / "Windows" / "System32" / "a.dll")) == "system"
+    assert classify(str(base / "Windows" / "Temp" / "a.tmp")) == "temp"
+    assert classify(str(base / "Local" / "Google" / "Chrome" / "Cache" / "f_000001")) == "temp"
+    assert classify(str(base / "Local" / "Spiel" / "save.dat")) == "appdata"

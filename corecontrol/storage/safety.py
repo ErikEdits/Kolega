@@ -54,6 +54,12 @@ def _env_dirs() -> dict[str, str]:
     }
 
 
+def _rel_parts(path: str, base: str) -> list[str]:
+    """Pfadbestandteile unterhalb von base (kleingeschrieben)."""
+    rel = os.path.relpath(_norm(path), _norm(base))
+    return [x.lower() for x in rel.replace("\\", "/").split("/") if x and x != "."]
+
+
 def _under(path: str, base: str) -> bool:
     if not base:
         return False
@@ -70,18 +76,20 @@ def classify(path: str) -> str:
         return "system"
     if "$recycle.bin" in parts:
         return "recycle"
-    if _under(path, d["temp"]) or (_under(path, d["windows"]) and "temp" in parts):
+    if _under(path, d["temp"]):
         return "temp"
     if _under(path, d["windows"]):
-        return "system"
+        return "temp" if _rel_parts(path, d["windows"])[:1] == ["temp"] else "system"
     if _under(path, d["program_files"]) or _under(path, d["program_files_x86"]):
         return "program"
     if _under(path, d["program_data"]):
         return "appdata"
-    if _under(path, d["local_appdata"]) or _under(path, d["appdata"]):
-        if "temp" in parts or "cache" in parts or "crashdumps" in parts:
-            return "temp"
-        return "appdata"
+    for key in ("local_appdata", "appdata"):
+        if _under(path, d[key]):
+            rel = _rel_parts(path, d[key])[:-1]  # nur Ordner, nicht der Dateiname
+            if any(x in ("temp", "cache", "cache_data", "crashdumps", "cache2") for x in rel):
+                return "temp"
+            return "appdata"
     if _under(path, d["user_profile"]):
         return "user"
     if ext_category(path) == "temp":
