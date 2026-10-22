@@ -360,7 +360,7 @@ STRINGS: dict[str, object] = {
     "diag.disk_space_warn.detected": "{free} free of {total} ({pct}).",
     "diag.disk_space_warn.recs": ["Run a storage analysis"],
     "diag.disk_space_ok.title": "Enough disk space",
-    "diag.disk_space_ok.detected": "All {n} checked drives have enough free space.",
+    "diag.disk_space_ok.detected": "Drives checked: {n}. All have enough free space.",
 
     # ---- Drive health -----------------------------------------------------
     "diag.disk_unhealthy.title": "Drive reports a defect: {disk}",
@@ -384,7 +384,7 @@ STRINGS: dict[str, object] = {
     "diag.disk_temp.recs": ["Improve airflow around the drive", "For NVMe SSDs: check the heatsink"],
     "diag.disk_temp.uncertainty": "Permitted temperatures differ by model.",
     "diag.disk_ok.title": "Drives report no errors",
-    "diag.disk_ok.detected": "Windows reports the status “healthy” for {n} drive(s).",
+    "diag.disk_ok.detected": "Drives checked: {n}. Windows reports all of them as “healthy”.",
     "diag.system_hdd.title": "Windows runs on a hard disk (HDD)",
     "diag.system_hdd.detected": "The system drive is a classic hard disk ({disk}).",
     "diag.system_hdd.causes": ["Hard disks are much slower than SSDs, especially when starting up and opening programs"],

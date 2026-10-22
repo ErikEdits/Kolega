@@ -360,7 +360,7 @@ STRINGS: dict[str, object] = {
     "diag.disk_space_warn.detected": "{free} frei von {total} ({pct}).",
     "diag.disk_space_warn.recs": ["Speicheranalyse durchführen"],
     "diag.disk_space_ok.title": "Genug Speicherplatz",
-    "diag.disk_space_ok.detected": "Alle {n} geprüften Laufwerke haben ausreichend freien Platz.",
+    "diag.disk_space_ok.detected": "Geprüfte Laufwerke: {n}. Auf allen ist ausreichend Platz frei.",
 
     # ---- Laufwerkszustand -------------------------------------------------
     "diag.disk_unhealthy.title": "Laufwerk meldet einen Defekt: {disk}",
@@ -384,7 +384,7 @@ STRINGS: dict[str, object] = {
     "diag.disk_temp.recs": ["Luftzufuhr am Laufwerk verbessern", "Bei NVMe-SSDs: Kühlkörper prüfen"],
     "diag.disk_temp.uncertainty": "Zulässige Temperaturen unterscheiden sich je nach Modell.",
     "diag.disk_ok.title": "Laufwerke ohne Fehlermeldung",
-    "diag.disk_ok.detected": "Windows meldet für {n} Laufwerk(e) den Zustand „fehlerfrei“.",
+    "diag.disk_ok.detected": "Geprüfte Laufwerke: {n}. Windows meldet für alle den Zustand „fehlerfrei“.",
     "diag.system_hdd.title": "Windows läuft auf einer Festplatte (HDD)",
     "diag.system_hdd.detected": "Das Systemlaufwerk ist eine klassische Festplatte ({disk}).",
     "diag.system_hdd.causes": ["Festplatten sind deutlich langsamer als SSDs, besonders beim Start und beim Öffnen von Programmen"],

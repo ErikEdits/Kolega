@@ -492,7 +492,7 @@ class DashboardPage(Page):
                 t["gpu"].set_stats(v1, c1, fmt.temp(g.temp), tr("dash.temperature"))
         if "ram" in t:
             lvl = "warning" if (s.ram_percent or 0) >= st.get("thresholds.ram_warn") else "normal"
-            t["ram"].ring.set_value(s.ram_percent, fmt.pct(s.ram_percent), tr("dash.load_caption"), lvl)
+            t["ram"].ring.set_value(s.ram_percent, fmt.pct(s.ram_percent), tr("dash.occupied"), lvl)
             free = (s.ram_total - s.ram_used) if s.ram_total is not None and s.ram_used is not None else None
             t["ram"].set_stats(fmt.bytes_(s.ram_used), tr("dash.used"), fmt.bytes_(free), tr("dash.free"))
         if "storage" in t and int(s.ts) % 5 == 0 or "storage" in t and t["storage"].v1.text() == "–":
