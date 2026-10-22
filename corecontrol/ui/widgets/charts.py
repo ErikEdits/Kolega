@@ -23,6 +23,18 @@ class Series:
     fill: bool = True
 
 
+def _start_slide(widget, animate: bool) -> None:
+    """Startet das weiche Einschieben eines neuen Wertes (nur wenn sichtbar und erlaubt)."""
+    from corecontrol.ui import anim
+
+    if animate and widget.isVisible() and anim.allow("chart"):
+        widget._phase = 0.0
+        anim.ticker().add(widget, widget._tick)
+    else:
+        widget._phase = 1.0
+        widget.update()
+
+
 def _resolve(color: str) -> QColor:
     if color.startswith("#"):
         return QColor(color)
@@ -34,7 +46,7 @@ class LineChart(QWidget):
 
     def __init__(self, points: int = 60, y_max: float | None = 100.0, unit: str = "%",
                  value_fmt: Callable[[float], str] | None = None, show_legend: bool = True,
-                 show_axes: bool = True, min_height: int = 150):
+                 show_axes: bool = True, min_height: int = 150, time_axis: bool = False, legend_right: bool = False):
         super().__init__()
         self.points = points
         self.y_max = y_max
@@ -43,6 +55,11 @@ class LineChart(QWidget):
         self.series: list[Series] = []
         self.show_legend = show_legend
         self.show_axes = show_axes
+        self.time_axis = time_axis
+        self.legend_right = legend_right
+        self.times: deque = deque(maxlen=points)
+        self._phase = 1.0
+        self._dur = 0.4
         self.setMinimumHeight(min_height)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         theme.changed.connect(self.update)
@@ -52,15 +69,27 @@ class LineChart(QWidget):
         self.series.append(s)
         return s
 
-    def push(self, *values: float | None) -> None:
+    def push(self, *values: float | None, ts: float | None = None, animate: bool = True) -> None:
+        import time as _t
+
+        now = ts if ts is not None else _t.time()
+        if self.times:
+            self._dur = max(0.15, min(0.45, (now - self.times[-1]) * 0.6))
+        self.times.append(now)
         for s, v in zip(self.series, values):
             s.values.append(v)
-        self.update()
+        _start_slide(self, animate)
 
     def clear(self) -> None:
         for s in self.series:
             s.values.clear()
+        self.times.clear()
         self.update()
+
+    def _tick(self, dt: float) -> bool:
+        self._phase = min(1.0, self._phase + dt / self._dur)
+        self.update()
+        return self._phase < 1.0
 
     def _ymax(self) -> float:
         if self.y_max is not None:
@@ -87,7 +116,7 @@ class LineChart(QWidget):
             fm = qp.fontMetrics()
             left = max(fm.horizontalAdvance(self.value_fmt(ymax * i / 4)) for i in range(5)) + 14
         top = 26 if self.show_legend else 6
-        bottom = 8
+        bottom = 24 if self.time_axis else 8
         right = 6
         plot = QRectF(left, top, max(10, w - left - right), max(10, h - top - bottom))
         # Raster
@@ -102,12 +131,18 @@ class LineChart(QWidget):
                 val = ymax * (4 - i) / 4
                 qp.drawText(QRectF(0, y - 8, left - 8, 16), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                             self.value_fmt(val))
-        # Linien
+        # Linien (neue Werte gleiten von rechts herein)
+        ease = 1 - (1 - self._phase) ** 3
+        step = plot.width() / max(1, self.points - 1)
+        shift = (1 - ease) * step
+        qp.save()
+        qp.setClipRect(plot.adjusted(0, -4, 0, 4))
         for s in self.series:
             col = _resolve(s.color)
-            pts: list[QPointF] = []
             n = self.points
             vals = list(s.values)
+            if len(vals) >= 2 and vals[-1] is not None and vals[-2] is not None and ease < 1:
+                vals[-1] = vals[-2] + (vals[-1] - vals[-2]) * ease
             offset = n - len(vals)
             segments: list[list[QPointF]] = [[]]
             for i, v in enumerate(vals):
@@ -115,7 +150,7 @@ class LineChart(QWidget):
                     if segments[-1]:
                         segments.append([])
                     continue
-                x = plot.left() + plot.width() * (offset + i) / max(1, n - 1)
+                x = plot.left() + plot.width() * (offset + i) / max(1, n - 1) + shift
                 y = plot.bottom() - plot.height() * min(max(v, 0.0), ymax) / ymax
                 segments[-1].append(QPointF(x, y))
             for pts in segments:
@@ -142,8 +177,46 @@ class LineChart(QWidget):
                 pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
                 qp.setPen(pen)
                 qp.drawPath(path)
+        qp.restore()
+        # Zeitachse
+        if self.time_axis and len(self.times) >= 2:
+            from datetime import datetime as _dt
+
+            qp.setFont(QFont(theme.font_family, 8))
+            qp.setPen(QColor(p.text3))
+            n = self.points
+            times = list(self.times)
+            interval = (times[-1] - times[0]) / max(1, len(times) - 1)
+            fm = qp.fontMetrics()
+            span_s = interval * (n - 1)
+            fmt_s = "%H:%M" if span_s >= 240 else "%H:%M:%S"
+            label_w = fm.horizontalAdvance("00:00:00") + 16
+            ticks = max(2, min(7, int(plot.width() // label_w)))
+            for k in range(ticks + 1):
+                frac = k / ticks
+                x = plot.left() + plot.width() * frac
+                t_at = times[-1] - (1 - frac) * span_s
+                if t_at < times[0] - interval * 0.5:
+                    continue  # für diesen Zeitpunkt gibt es noch keine Messwerte
+                txt = _dt.fromtimestamp(t_at).strftime(fmt_s)
+                align = Qt.AlignmentFlag.AlignLeft if k == 0 else Qt.AlignmentFlag.AlignRight if k == ticks else Qt.AlignmentFlag.AlignHCenter
+                rx = x if k == 0 else x - label_w if k == ticks else x - label_w / 2
+                qp.drawText(QRectF(rx, plot.bottom() + 4, label_w, 16), align, txt)
         # Legende
-        if self.show_legend:
+        if self.show_legend and self.legend_right:
+            lf = QFont(theme.font_family, 9)
+            qp.setFont(lf)
+            fm = qp.fontMetrics()
+            x = plot.right()
+            for s in reversed(self.series):
+                tw = fm.horizontalAdvance(s.name)
+                x -= tw + 22
+                qp.setPen(Qt.PenStyle.NoPen)
+                qp.setBrush(_resolve(s.color))
+                qp.drawEllipse(QRectF(x, 8, 8, 8))
+                qp.setPen(QColor(p.text2))
+                qp.drawText(QRectF(x + 12, 2, tw + 4, 20), Qt.AlignmentFlag.AlignVCenter, s.name)
+        elif self.show_legend:
             x = plot.left()
             lf = QFont(theme.font_family, 9)
             qp.setFont(lf)
@@ -162,19 +235,29 @@ class LineChart(QWidget):
 
 
 class Sparkline(QWidget):
-    def __init__(self, color: str = "accent", points: int = 60, y_max: float | None = 100.0, height: int = 38):
+    def __init__(self, color: str = "accent", points: int = 60, y_max: float | None = 100.0, height: int = 38,
+                 max_height: int = 96):
         super().__init__()
         self.color = color
         self.values: deque = deque(maxlen=points)
         self.points = points
         self.y_max = y_max
-        self.setFixedHeight(height)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setMinimumHeight(height)
+        self.setMaximumHeight(max(height, max_height))
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         theme.changed.connect(self.update)
 
-    def push(self, v: float | None) -> None:
+    _phase = 1.0
+    _dur = 0.4
+
+    def push(self, v: float | None, animate: bool = True) -> None:
         self.values.append(v)
+        _start_slide(self, animate)
+
+    def _tick(self, dt: float) -> bool:
+        self._phase = min(1.0, self._phase + dt / self._dur)
         self.update()
+        return self._phase < 1.0
 
     def paintEvent(self, _):
         vals = [v for v in self.values]
@@ -186,11 +269,15 @@ class Sparkline(QWidget):
         w, h = self.width(), self.height() - 2
         ymax = self.y_max or max((v for v in vals if v is not None), default=1) or 1
         offset = self.points - len(vals)
+        ease = 1 - (1 - self._phase) ** 3
+        shift = (1 - ease) * w / max(1, self.points - 1)
+        if len(vals) >= 2 and vals[-1] is not None and vals[-2] is not None and ease < 1:
+            vals[-1] = vals[-2] + (vals[-1] - vals[-2]) * ease
         pts = []
         for i, v in enumerate(vals):
             if v is None:
                 continue
-            x = w * (offset + i) / max(1, self.points - 1)
+            x = w * (offset + i) / max(1, self.points - 1) + shift
             y = 1 + h - h * min(max(v, 0), ymax) / ymax
             pts.append(QPointF(x, y))
         path = QPainterPath(pts[0])

@@ -45,7 +45,7 @@ def test_wrong_types_and_ranges_are_corrected():
     assert v["history.retention_days"] == SCHEMA["history.retention_days"].max
     assert v["notify.enabled"] is True
     assert v["thresholds.ram_warn"] == 90
-    assert v["ui.accent"] == "#2d7ff9"
+    assert v["ui.accent"] == "#2f7bff"
     assert v["dashboard.tiles"] == ["cpu", "ram"]
     assert "unknown:foo.bar" in res.warnings
     assert any(w.startswith("clamped:monitor.interval_ms") for w in res.warnings)

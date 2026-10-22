@@ -12,6 +12,7 @@ from corecontrol.system.autostart import list_items, set_enabled
 from corecontrol.system.tools import run_tool
 from corecontrol.ui.bus import on_refresh
 from corecontrol.ui.dialogs import ConfirmDialog
+from corecontrol.ui import msg
 from corecontrol.ui.pages.base import Page
 from corecontrol.ui.widgets.common import Banner, Card, button, label
 from corecontrol.ui.widgets.table import DataTable
@@ -96,8 +97,7 @@ class AutostartPage(Page):
             return
         enable = not it.enabled
         if it.needs_admin and not is_admin():
-            r = QMessageBox.question(self, tr("common.admin_required"), tr("auto.needs_admin"))
-            if r == QMessageBox.StandardButton.Yes:
+            if msg.ask(self, tr("common.admin_required"), tr("auto.needs_admin")):
                 relaunch_as_admin()
             return
         key = "auto.confirm_enable" if enable else "auto.confirm_disable"
@@ -109,10 +109,11 @@ class AutostartPage(Page):
         try:
             set_enabled(it, enable)
         except PermissionError:
-            QMessageBox.warning(self, tr("common.error"), tr("common.admin_required"))
+            msg.warn(self, tr("common.error"), tr("common.admin_required"))
             return
         except OSError as exc:
-            QMessageBox.warning(self, tr("common.error"), tr("common.action_failed", error=str(exc)))
+            msg.warn(self, tr("common.error"), tr("common.action_failed", error=str(exc)))
             return
-        QMessageBox.information(self, tr("auto.title"), tr("auto.done_enabled" if enable else "auto.done_disabled", name=it.name))
+        self.ctx.activity.add("info", "act.autostart_on" if enable else "act.autostart_off", "autostart", name=it.name)
+        msg.info(self, tr("auto.title"), tr("auto.done_enabled" if enable else "auto.done_disabled", name=it.name))
         self._render()

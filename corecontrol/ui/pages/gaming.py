@@ -15,6 +15,7 @@ from corecontrol.system.tools import run_action
 from corecontrol.ui.bus import on_refresh
 from corecontrol.ui.dialogs import ConfirmDialog
 from corecontrol.ui.mini_monitor import is_open, toggle_mini_monitor
+from corecontrol.ui import msg
 from corecontrol.ui.pages.base import Page
 from corecontrol.ui.widgets.common import Card, Chip, SettingRow, Toggle, button, icon_label, label
 from corecontrol.ui.widgets.table import DataTable
@@ -161,7 +162,7 @@ class GamingPage(Page):
             if new:
                 self.ctx.settings.set("gaming.games", self._games() + new)
             self._render_games()
-            QMessageBox.information(self, tr("game.detect"), tr("game.detected", found=len(found), new=len(new)))
+            msg.info(self, tr("game.detect"), tr("game.detected", found=len(found), new=len(new)))
 
         run_task(library.detect_games, on_done=done, context="games")
 
@@ -173,7 +174,7 @@ class GamingPage(Page):
         path = os.path.normpath(path)
         reason = library.validate_target(path)
         if reason:
-            QMessageBox.warning(self, tr("game.add"), tr(f"game.invalid.{reason}"))
+            msg.warn(self, tr("game.add"), tr(f"game.invalid.{reason}"))
             return
         name = os.path.splitext(os.path.basename(path))[0]
         self.ctx.settings.set("gaming.games", self._games() + [{"name": name, "target": path, "source": "manual"}])
@@ -187,14 +188,14 @@ class GamingPage(Page):
     def _launch(self):
         k, g = self._selected()
         if g is None:
-            QMessageBox.information(self, tr("game.launch"), tr("game.select_first"))
+            msg.info(self, tr("game.launch"), tr("game.select_first"))
             return
         try:
             library.launch(g["target"])
         except ValueError as exc:
-            QMessageBox.warning(self, tr("game.launch"), tr(f"game.invalid.{exc}"))
+            msg.warn(self, tr("game.launch"), tr(f"game.invalid.{exc}"))
         except OSError as exc:
-            QMessageBox.warning(self, tr("game.launch"), tr("common.action_failed", error=str(exc)))
+            msg.warn(self, tr("game.launch"), tr("common.action_failed", error=str(exc)))
 
     def _remove(self):
         k, g = self._selected()

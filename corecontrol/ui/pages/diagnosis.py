@@ -11,6 +11,7 @@ from corecontrol.i18n import tr
 from corecontrol.ui import icons
 from corecontrol.ui.bus import bind_text, bus, on_refresh
 from corecontrol.ui.pages.base import Page
+from corecontrol.ui.widgets.controls import AnimatedButton
 from corecontrol.ui.theme import theme
 from corecontrol.ui.widgets.common import Card, Chip, EmptyState, button, icon_label, label, set_role
 from corecontrol.ui.widgets.finding import FindingCard
@@ -31,8 +32,14 @@ class DiagnosisPage(Page):
         # Fortschritt
         self.progress_card = Card("diagp.running", "refresh-cw")
         self.bar = QProgressBar()
-        self.bar.setRange(0, len(STEPS))
+        self.bar.setRange(0, len(STEPS) * 100)
         self.progress_card.add(self.bar)
+        from corecontrol.ui import anim
+        from PySide6.QtCore import QPropertyAnimation
+
+        self._bar_anim = QPropertyAnimation(self.bar, b"value", self)
+        self._bar_anim.setDuration(400)
+        self._bar_anim.setEasingCurve(anim.EASE)
         self.step_label = label(None, "muted", text="")
         self.progress_card.add(self.step_label)
         self.progress_card.setVisible(False)
@@ -68,7 +75,7 @@ class DiagnosisPage(Page):
         self.filter_group = QButtonGroup(self)
         self.filter = "problems"
         for key, text_key in (("problems", "diagp.filter_problems"), ("all", "diagp.filter_all"), ("ok", "diagp.filter_ok")):
-            b = QPushButton()
+            b = AnimatedButton()
             bind_text(b, text_key)
             set_role(b, "filter")
             b.setCheckable(True)
@@ -102,12 +109,17 @@ class DiagnosisPage(Page):
 
         ctx.diagnosis_started.connect(self._started)
         ctx.diagnosis_progress.connect(self._progress)
-        ctx.diagnosis_finished.connect(lambda *_: self.render())
+        self._animate_next = False
+        ctx.diagnosis_finished.connect(self._finished)
         on_refresh(self, self.render)
         self.render()
 
     def _run(self):
         self.ctx.run_diagnosis()
+
+    def _finished(self, *_):
+        self._animate_next = True
+        self.render()
 
     def _set_filter(self, key):
         self.filter = key
@@ -119,8 +131,17 @@ class DiagnosisPage(Page):
         self.render()
 
     def _progress(self, step):
+        from corecontrol.ui import anim
+
         if step in STEPS:
-            self.bar.setValue(STEPS.index(step))
+            target = STEPS.index(step) * 100
+            if anim.allow("fade"):
+                self._bar_anim.stop()
+                self._bar_anim.setStartValue(self.bar.value())
+                self._bar_anim.setEndValue(target)
+                self._bar_anim.start()
+            else:
+                self.bar.setValue(target)
             self.step_label.setText(tr(f"diagp.step.{step}"))
 
     def render(self):
@@ -155,12 +176,21 @@ class DiagnosisPage(Page):
             self.chips[lvl].setVisible(n > 0 or lvl == "ok")
         items = res.sorted()
         if self.filter == "problems":
-            items = [f for f in items if f.severity != "ok"]
+            problems = [f for f in items if f.severity != "ok"]
+            if not problems:
+                self.list.addWidget(label("diagp.no_problems_checked", "muted", wrap=True))
+                problems = items
+            items = problems
         elif self.filter == "ok":
             items = [f for f in items if f.severity == "ok"]
         if not items:
-            e = label("diagp.no_items", "muted")
-            self.list.addWidget(e)
-        for f in items:
-            self.list.addWidget(FindingCard(f, expanded=f.severity == "critical"))
+            self.list.addWidget(label("diagp.no_items", "muted"))
+        from corecontrol.ui import anim
+
+        for i, f in enumerate(items):
+            card = FindingCard(f, expanded=f.severity == "critical")
+            self.list.addWidget(card)
+            if self._animate_next and i < 12:
+                anim.fade_in(card, 240, 35 * i)
+        self._animate_next = False
         self.skipped_text.setText("\n".join(f"• {reason}" for _, reason in res.skipped))

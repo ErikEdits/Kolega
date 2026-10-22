@@ -34,6 +34,7 @@ class AlertMonitor(QObject):
         self._since: dict[str, float] = {}
         self._active: dict[str, Alert] = {}
         self._last_notify: dict[str, float] = {}
+        self._last_logged: dict[str, float] = {}
         self._disk_timer = QTimer(self)
         self._disk_timer.timeout.connect(self.check_disks)
         self._disk_timer.start(5 * 60 * 1000)
@@ -51,6 +52,10 @@ class AlertMonitor(QObject):
                 self._active[key] = Alert(key, level, title, text, target)
                 if is_new:
                     self._notify(self._active[key], now)
+                    act = getattr(self.ctx, "activity", None)
+                    if act is not None and now - self._last_logged.get(key, 0) > 1800:
+                        self._last_logged[key] = now
+                        act.add(level, f"act.alert.{key.split(':')[0]}", target, drive=key.partition(":")[2])
                     self.changed.emit(self.active())
         else:
             self._since.pop(key, None)

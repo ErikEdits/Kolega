@@ -21,8 +21,8 @@ log = logging.getLogger(__name__)
 
 SETTINGS_VERSION = 1
 
-TILE_IDS = ("diagnosis", "cpu", "ram", "gpu", "disk", "network", "storage", "system", "sensors")
-DEFAULT_TILES = ["diagnosis", "cpu", "ram", "gpu", "disk", "network", "storage", "system"]
+TILE_IDS = ("cpu", "gpu", "ram", "storage", "load", "temps", "fans", "actions", "events", "network", "diagnosis", "system")
+DEFAULT_TILES = ["cpu", "gpu", "ram", "storage", "load", "temps", "fans", "actions", "events", "network"]
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -89,9 +89,10 @@ class Field:
 SCHEMA: dict[str, Field] = {
     # Darstellung
     "ui.theme": Field("system", str, choices=("system", "light", "dark")),
-    "ui.accent": Field("#2d7ff9", str, validator=_valid_accent),
+    "ui.accent": Field("#2f7bff", str, validator=_valid_accent),
     "ui.language": Field("system", str, choices=("system", "de", "en")),
     "ui.window_geometry": Field("", str),
+    "ui.animations": Field("system", str, choices=("system", "full", "reduced", "off")),
     # Dashboard
     "dashboard.tiles": Field(list(DEFAULT_TILES), list, validator=_valid_tiles),
     # Messung

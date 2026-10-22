@@ -54,8 +54,8 @@ class NetworkPage(Page):
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(16)
         self.act_card = Card("net.activity", "activity")
-        self.chart = LineChart(120, None, "", lambda v: fmt.rate_bits(v))
-        self.chart.add_series(tr("mon.down"), "info")
+        self.chart = LineChart(120, None, "", lambda v: fmt.rate_bits(v), time_axis=True)
+        self.chart.add_series(tr("mon.down"), "cat_net")
         self.chart.add_series(tr("mon.up"), "ok")
         self.act_card.add(self.chart)
         self.act_card.add(label("net.activity_hint", "faint", wrap=True))
@@ -89,8 +89,8 @@ class NetworkPage(Page):
     def on_show(self):
         if self.ctx.sampler:
             self.chart.clear()
-            for s in self.ctx.sampler.store.window(120):
-                self.chart.push(s.net_down_bps, s.net_up_bps)
+            for s in self.ctx.sampler.store.window(120)[:-1]:
+                self.chart.push(s.net_down_bps, s.net_up_bps, ts=s.ts, animate=False)
         if self.result is None and self.ctx.diagnosis_result is not None and self.ctx.diagnosis_result.network is not None:
             self.result = self.ctx.diagnosis_result.network
             self.adapters = self.result.adapters
@@ -104,7 +104,7 @@ class NetworkPage(Page):
             run_task(lambda: (list_adapters(), wifi_info()), on_done=done, context="network")
 
     def on_sample(self, s):
-        self.chart.push(s.net_down_bps, s.net_up_bps)
+        self.chart.push(s.net_down_bps, s.net_up_bps, ts=s.ts)
 
     def run_test(self):
         self.test_btn.setEnabled(False)
@@ -128,6 +128,14 @@ class NetworkPage(Page):
             self.result = res
             self.adapters = res.adapters
             self.wifi = res.wifi
+            self.ctx.last_network = res
+            best = res.best_internet
+            if res.internet_ok and best is not None and best.avg is not None:
+                self.ctx.activity.add("ok", "act.net_ok", "network", ms=fmt.ms(best.avg), loss=fmt.pct(best.loss_pct))
+            elif res.internet_ok:
+                self.ctx.activity.add("info", "act.net_ok_noping", "network")
+            else:
+                self.ctx.activity.add("warning", "act.net_fail", "network")
             self._render_all()
 
         def failed(exc):

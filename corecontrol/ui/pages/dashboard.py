@@ -1,378 +1,401 @@
-"""Startseite mit anpassbaren Dashboard-Kacheln."""
+"""Startseite (Dashboard) im CoreControl-Design: Metrikkarten mit Ringanzeigen, Auslastungsdiagramm,
+Temperaturen, Lüfter, Schnellaktionen, letzte Ereignisse und Netzwerk. Kacheln sind in den
+Einstellungen ein-/ausblendbar und sortierbar. Fehlende Werte werden als „Nicht verfügbar“ gezeigt."""
 
 from __future__ import annotations
 
+import socket
 import time
+from datetime import datetime, timedelta
 
 import psutil
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from corecontrol.core import fmt
-from corecontrol.i18n import tr
-from corecontrol.ui.bus import bind_text, bus, on_refresh
+from corecontrol.i18n import T, tr
+from corecontrol.ui import anim, icons
+from corecontrol.ui.bus import bus, on_refresh
 from corecontrol.ui.pages.base import Page
-from corecontrol.ui.widgets.charts import Ring, Sparkline
-from corecontrol.ui.widgets.common import Chip, button, icon_label, label, set_prop, set_role
+from corecontrol.ui.theme import theme
+from corecontrol.ui.widgets.charts import LineChart, Sparkline
+from corecontrol.ui.widgets.common import Card, KeyValueGrid, button, icon_label, label, set_role
+from corecontrol.ui.widgets.controls import BarRow, GaugeRing, IconBadge
+
+SPANS = {"cpu": 3, "gpu": 3, "ram": 3, "storage": 3, "load": 6, "temps": 3, "fans": 3,
+         "actions": 4, "events": 4, "network": 4, "diagnosis": 6, "system": 6}
 
 
-class Tile(QFrame):
-    def __init__(self, title_key: str, icon: str, target: str | None = None):
-        super().__init__()
-        set_role(self, "tile")
+def _vline() -> QFrame:
+    f = QFrame()
+    f.setFixedWidth(1)
+    set_role(f, "separator")
+    f.setStyleSheet("max-height: 10000px;")
+    return f
+
+
+class MetricCard(Card):
+    """CPU / GPU / RAM / Speicher: Symbol, Name, Modell, Ring, zwei Kennzahlen, Verlaufslinie."""
+
+    def __init__(self, title_key: str, icon: str, color_role: str, target: str, spark_ymax: float | None = 100.0):
+        super().__init__(None, role="tile", margins=18, spacing=10, hover=True)
         self.target = target
-        self.setMinimumHeight(170)
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(18, 16, 18, 14)
-        lay.setSpacing(6)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         head = QHBoxLayout()
-        head.setSpacing(8)
-        head.addWidget(icon_label(icon, "text2", 17))
-        self.title = label(title_key, "h3")
-        head.addWidget(self.title)
-        head.addStretch(1)
-        self.chip = Chip("", "neutral")
-        self.chip.setVisible(False)
-        head.addWidget(self.chip)
-        lay.addLayout(head)
-        self.body = QVBoxLayout()
-        self.body.setSpacing(4)
-        lay.addLayout(self.body, 1)
-        if target:
-            self.setCursor(Qt.CursorShape.PointingHandCursor)
+        head.setSpacing(12)
+        head.addWidget(IconBadge(icon, color_role, 44))
+        col = QVBoxLayout()
+        col.setSpacing(0)
+        col.addWidget(label(title_key, "h2"))
+        self.subtitle = label(None, "faint", text="")
+        col.addWidget(self.subtitle)
+        head.addLayout(col, 1)
+        self.add_layout(head)
+        body = QHBoxLayout()
+        body.setSpacing(16)
+        self.ring = GaugeRing(112, 9, color_role)
+        body.addWidget(self.ring)
+        body.addWidget(_vline())
+        stats = QVBoxLayout()
+        stats.setSpacing(10)
+        self.v1, self.c1 = label(None, "statValue", text="–"), label(None, "faint", text="")
+        self.v2, self.c2 = label(None, "statValue", text="–"), label(None, "faint", text="")
+        for v, c in ((self.v1, self.c1), (self.v2, self.c2)):
+            box = QVBoxLayout()
+            box.setSpacing(0)
+            box.addWidget(v)
+            box.addWidget(c)
+            stats.addLayout(box)
+        stats.addStretch(1)
+        body.addLayout(stats, 1)
+        self.add_layout(body)
+        self.spark = Sparkline(color_role, 60, spark_ymax, 46)
+        self.add(self.spark)
 
     def mouseReleaseEvent(self, ev):
-        if self.target and ev.button() == Qt.MouseButton.LeftButton:
+        if ev.button() == Qt.MouseButton.LeftButton:
             bus.navigate.emit(self.target)
         super().mouseReleaseEvent(ev)
 
-    def set_chip(self, text: str | None, level: str = "neutral") -> None:
-        self.chip.setVisible(bool(text))
-        if text:
-            self.chip.setText(text)
-            self.chip.set_level(level)
+    def set_stats(self, v1: str, c1: str, v2: str, c2: str) -> None:
+        self.v1.setText(v1)
+        self.c1.setText(c1)
+        self.v2.setText(v2)
+        self.c2.setText(c2)
 
 
-class MetricTile(Tile):
-    """Große Zahl + Unterzeilen + Verlaufslinie."""
-
-    def __init__(self, title_key, icon, target=None, ring=False, y_max=100.0, color="accent"):
-        super().__init__(title_key, icon, target)
+class ActionRow(Card):
+    def __init__(self, icon: str, title_key: str, sub_key: str, on_click):
+        super().__init__(None, role="actionRow", margins=12, spacing=0, hover=True)
+        self.on_click = on_click
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         row = QHBoxLayout()
-        row.setSpacing(14)
-        self.ring = Ring(58, 7) if ring else None
-        if self.ring:
-            row.addWidget(self.ring)
+        row.setSpacing(12)
+        row.addWidget(IconBadge(icon, "accent", 36))
         col = QVBoxLayout()
         col.setSpacing(0)
-        self.value = label(None, "bigValue", text="–")
-        self.sub1 = label(None, "muted", text="")
-        self.sub2 = label(None, "faint", text="")
-        col.addWidget(self.value)
-        col.addWidget(self.sub1)
-        col.addWidget(self.sub2)
+        col.addWidget(label(title_key, "h3"))
+        col.addWidget(label(sub_key, "faint"))
         row.addLayout(col, 1)
-        self.body.addLayout(row)
-        self.body.addStretch(1)
-        self.spark = Sparkline(color, 60, y_max)
-        self.body.addWidget(self.spark)
+        row.addWidget(icon_label("chevron-right", "text3", 16))
+        self.add_layout(row)
+
+    def mouseReleaseEvent(self, ev):
+        if ev.button() == Qt.MouseButton.LeftButton:
+            self.on_click()
+        super().mouseReleaseEvent(ev)
 
 
-def _level(value: float | None, warn: float, crit: float | None = None) -> str:
-    if value is None:
-        return "accent"
-    if crit is not None and value >= crit:
-        return "crit"
-    if value >= warn:
-        return "warn"
-    return "accent"
+def when_text(ts: float) -> str:
+    d = datetime.fromtimestamp(ts)
+    today = datetime.now().date()
+    hm = d.strftime("%H:%M")
+    if d.date() == today:
+        return tr("time.today", time=hm)
+    if d.date() == today - timedelta(days=1):
+        return tr("time.yesterday", time=hm)
+    return fmt.datetime_(d)
 
 
-class DiagnosisTile(Tile):
+LEVEL_ICON = {"ok": ("circle-check", "ok"), "info": ("info", "info"), "warning": ("triangle-alert", "warn"),
+              "critical": ("octagon-x", "crit")}
+
+
+class EventsCard(Card):
     def __init__(self, ctx):
-        super().__init__("dash.diagnosis", "stethoscope", "diagnosis")
+        super().__init__("dash.events", "scroll-text", role="tile", hover=True, badge="accent")
         self.ctx = ctx
-        row = QHBoxLayout()
-        row.setSpacing(14)
-        self.status_icon = QLabel()
-        self.status_icon.setFixedSize(46, 46)
-        row.addWidget(self.status_icon, 0, Qt.AlignmentFlag.AlignTop)
-        col = QVBoxLayout()
-        col.setSpacing(2)
-        self.headline = label(None, "midValue", text="")
-        self.headline.setWordWrap(True)
-        self.detail = label(None, "muted", text="", wrap=True)
-        col.addWidget(self.headline)
-        col.addWidget(self.detail)
-        row.addLayout(col, 1)
-        self.body.addLayout(row)
-        self.top = QVBoxLayout()
-        self.top.setSpacing(3)
-        self.body.addLayout(self.top)
+        self.add_header_widget(button("dash.events_all", "ghost", None, self._show_all))
+        self.rows = QVBoxLayout()
+        self.rows.setSpacing(2)
+        self.add_layout(self.rows)
         self.body.addStretch(1)
-        btns = QHBoxLayout()
-        self.run_btn = button("dash.run_diagnosis", "primary", "play", ctx.run_diagnosis)
-        btns.addWidget(self.run_btn)
-        btns.addStretch(1)
-        self.when = label(None, "faint", text="")
-        btns.addWidget(self.when)
-        self.body.addLayout(btns)
-        ctx.diagnosis_started.connect(self.refresh)
-        ctx.diagnosis_finished.connect(lambda *_: self.refresh())
+        ctx.activity.on_add(lambda *_: QTimer.singleShot(0, self.refresh))
         on_refresh(self, self.refresh)
         self.refresh()
 
-    def refresh(self) -> None:
-        from corecontrol.ui import icons
-        from corecontrol.ui.theme import theme
-
-        res = self.ctx.diagnosis_result
-        while self.top.count():
-            w = self.top.takeAt(0).widget()
+    def refresh(self):
+        while self.rows.count():
+            w = self.rows.takeAt(0).widget()
             if w:
                 w.deleteLater()
-        self.run_btn.setEnabled(not self.ctx.diagnosis_running)
-        if self.ctx.diagnosis_running:
-            self.headline.setText(tr("dash.diag_running"))
-            self.detail.setText(tr("dash.diag_running_text"))
-            self.status_icon.setPixmap(icons.pixmap("refresh-cw", theme.palette.accent_fg, 40))
-            self.set_chip(None)
+        items = self.ctx.activity.recent(5)
+        if not items:
+            self.rows.addWidget(label("dash.events_none", "muted", wrap=True))
             return
-        if res is None:
-            self.headline.setText(tr("dash.diag_none"))
-            self.detail.setText(tr("dash.diag_none_text"))
-            self.status_icon.setPixmap(icons.pixmap("circle-help", theme.palette.text3, 40))
-            self.when.setText("")
-            self.set_chip(None)
-            return
-        crit, warn, info = res.count("critical"), res.count("warning"), res.count("info")
-        if crit:
-            name, role, head, lvl = "octagon-x", "crit", tr("dash.diag_crit", n=crit), "critical"
-        elif warn:
-            name, role, head, lvl = "triangle-alert", "warn", tr("dash.diag_warn", n=warn), "warning"
-        else:
-            name, role, head, lvl = "circle-check", "ok", tr("dash.diag_ok"), "ok"
-        self.status_icon.setPixmap(icons.pixmap(name, theme.palette.color(role), 40))
-        self.headline.setText(head)
-        self.detail.setText(tr("dash.diag_summary", crit=crit, warn=warn, info=info, ok=res.count("ok")))
-        self.set_chip(tr(f"severity.{lvl}"), lvl)
-        for f in res.problems()[:3]:
-            row = QHBoxLayout()
-            dot = QLabel("●")
-            set_role(dot, {"critical": "crit", "warning": "warn"}.get(f.severity, "info"))
-            t = QLabel(str(f.title))
+        for a in items:
+            w = QWidget()
+            h = QHBoxLayout(w)
+            h.setContentsMargins(0, 5, 0, 5)
+            h.setSpacing(10)
+            name, role = LEVEL_ICON.get(a.level, LEVEL_ICON["info"])
+            h.addWidget(icon_label(name, role, 18))
+            t = QLabel(tr(a.key, **a.params))
             t.setWordWrap(True)
-            w = QWidget()
-            hl = QHBoxLayout(w)
-            hl.setContentsMargins(0, 0, 0, 0)
-            hl.setSpacing(6)
-            hl.addWidget(dot, 0, Qt.AlignmentFlag.AlignTop)
-            hl.addWidget(t, 1)
-            self.top.addWidget(w)
-        self.when.setText(tr("dash.diag_when", when=fmt.datetime_(res.finished_at)))
-
-
-class StorageTile(Tile):
-    def __init__(self):
-        super().__init__("dash.storage", "hard-drive", "storage")
-        self.rows = QVBoxLayout()
-        self.rows.setSpacing(8)
-        self.body.addLayout(self.rows)
-        self.body.addStretch(1)
-        self._widgets: list = []
-        self._last = 0.0
-
-    def refresh(self, force: bool = False) -> None:
-        if not force and time.time() - self._last < 30:
-            return
-        self._last = time.time()
-        for w in self._widgets:
-            w.deleteLater()
-        self._widgets = []
-        parts = []
-        try:
-            parts = [p for p in psutil.disk_partitions(all=False) if p.fstype and "cdrom" not in p.opts]
-        except Exception:
-            pass
-        shown = 0
-        for p in parts:
-            if p.mountpoint.startswith(("/snap", "/boot", "/proc", "/sys")) or p.fstype in ("squashfs", "overlay"):
-                continue
-            try:
-                u = psutil.disk_usage(p.mountpoint)
-            except Exception:
-                continue
-            if u.total < 1024**3:
-                continue
-            w = QWidget()
-            v = QVBoxLayout(w)
-            v.setContentsMargins(0, 0, 0, 0)
-            v.setSpacing(3)
-            top = QHBoxLayout()
-            name = QLabel(p.mountpoint)
-            name.setStyleSheet("font-weight: 600;")
-            top.addWidget(name)
-            top.addStretch(1)
-            free = label(None, "muted", text=tr("dash.free_of", free=fmt.bytes_(u.free), total=fmt.bytes_(u.total)))
-            top.addWidget(free)
-            v.addLayout(top)
-            bar = QProgressBar()
-            bar.setRange(0, 1000)
-            bar.setValue(int(u.percent * 10))
-            bar.setFixedHeight(8)
-            free_pct = 100 - u.percent
-            set_prop(bar, "level", "critical" if free_pct < 5 else "warning" if free_pct < 10 else "")
-            v.addWidget(bar)
+            h.addWidget(t, 1)
+            h.addWidget(label(None, "faint", text=when_text(a.ts)))
             self.rows.addWidget(w)
-            self._widgets.append(w)
-            shown += 1
-            if shown >= 4:
-                break
-        if shown == 0:
-            w = label("common.na", "muted")
-            self.rows.addWidget(w)
-            self._widgets.append(w)
+
+    def _show_all(self):
+        from corecontrol.ui.dialogs import show_text_dialog
+
+        lines = [f"{when_text(a.ts):>18}   {tr('severity.' + a.level) if a.level != 'ok' else 'OK':10}  {tr(a.key, **a.params)}"
+                 for a in self.ctx.activity.all()]
+        show_text_dialog(self, tr("dash.events"), "\n".join(lines) or tr("dash.events_none"))
 
 
-class SystemTile(Tile):
+class NetworkCard(Card):
     def __init__(self, ctx):
-        super().__init__("dash.system", "monitor", "hardware")
+        super().__init__("dash.network", "wifi", role="tile", hover=True, badge="cat_net")
         self.ctx = ctx
-        from corecontrol.ui.widgets.common import KeyValueGrid
+        self.kv = QGridLayout()
+        self.kv.setHorizontalSpacing(10)
+        self.kv.setVerticalSpacing(7)
+        self.vals = {}
+        for i, (key, icon) in enumerate((("conn", "wifi"), ("ip", "globe"), ("down", "download"), ("up", "upload"),
+                                         ("ping", "timer"), ("loss", "activity"))):
+            self.kv.addWidget(icon_label(icon, "text3", 15), i, 0)
+            self.kv.addWidget(label(f"dash.net.{key}", "muted"), i, 1)
+            v = label(None, None, text="–")
+            v.setAlignment(Qt.AlignmentFlag.AlignRight)
+            self.kv.addWidget(v, i, 2)
+            self.vals[key] = v
+        self.kv.setColumnStretch(1, 1)
+        self.add_layout(self.kv)
+        self.spark = Sparkline("cat_net", 60, None, 40)
+        self.add(self.spark)
+        self.add(label("dash.net_hint", "faint", wrap=True))
+        self._last_if = 0.0
+        self._conn = ("–", "")
 
-        self.grid = KeyValueGrid()
-        self.body.addWidget(self.grid)
-        self.body.addStretch(1)
-        ctx.hardware_ready.connect(lambda *_: self.refresh())
-        on_refresh(self, self.refresh)
+    def update_sample(self, s):
+        if time.time() - self._last_if > 10:
+            self._last_if = time.time()
+            self._conn = self._connection()
+        conn, ip = self._conn
+        self.vals["conn"].setText(conn)
+        self.vals["conn"].setStyleSheet(f"color: {theme.palette.accent_fg};")
+        self.vals["ip"].setText(ip or tr("common.na"))
+        self.vals["down"].setText(fmt.rate_bits(s.net_down_bps))
+        self.vals["up"].setText(fmt.rate_bits(s.net_up_bps))
+        net = getattr(self.ctx, "last_network", None)
+        best = net.best_internet if net is not None else None
+        self.vals["ping"].setText(fmt.ms(best.avg) if best is not None and best.avg is not None else tr("dash.net.not_tested"))
+        self.vals["loss"].setText(fmt.pct(best.loss_pct) if best is not None and best.loss_pct is not None else "–")
+        self.spark.push(s.net_down_bps)
 
-    def refresh(self, sample=None) -> None:
-        hw = self.ctx.hardware or {}
-        os_ = hw.get("os") or {}
-        cpu = hw.get("cpu") or {}
-        gpus = hw.get("gpus") or []
-        uptime = time.time() - psutil.boot_time()
-        rows = [
-            (tr("dash.sys.os"), f"{os_.get('name') or fmt.or_na(None)} {os_.get('display_version') or ''}".strip()),
-            (tr("dash.sys.cpu"), cpu.get("name") or tr("common.loading")),
-            (tr("dash.sys.gpu"), ", ".join(g["name"] for g in gpus) if gpus else (tr("common.loading") if self.ctx.hardware is None else tr("common.na"))),
-            (tr("dash.sys.ram"), fmt.bytes_(psutil.virtual_memory().total)),
-            (tr("dash.sys.uptime"), fmt.duration(uptime)),
-        ]
-        if sample is not None and sample.process_count:
-            rows.append((tr("dash.sys.processes"), str(sample.process_count)))
-        self.grid.set_rows(rows)
+    def _connection(self) -> tuple[str, str]:
+        from corecontrol.network.tests import _kind
 
-
-class SensorsTile(Tile):
-    def __init__(self):
-        super().__init__("dash.sensors", "thermometer", "monitoring")
-        from corecontrol.ui.widgets.common import KeyValueGrid
-
-        self.grid = KeyValueGrid()
-        self.body.addWidget(self.grid)
-        self.hint = label("dash.sensors_hint", "faint", wrap=True)
-        self.body.addWidget(self.hint)
-        self.body.addStretch(1)
-
-    def update_sample(self, s) -> None:
-        rows = []
-        if s.cpu_temp is not None:
-            rows.append((tr("dash.cpu_temp"), fmt.temp(s.cpu_temp)))
-        g = s.primary_gpu
-        if g is not None and g.temp is not None:
-            rows.append((tr("dash.gpu_temp"), fmt.temp(g.temp)))
-        fans = [x for x in s.sensors if x.kind == "fan" and x.value > 0][:3]
-        for f in fans:
-            rows.append((f.name, f"{fmt.number(f.value)} RPM"))
-        if s.cpu_power_w is not None:
-            rows.append((tr("dash.cpu_power"), f"{fmt.number(s.cpu_power_w, 1)} W"))
-        self.grid.set_rows(rows)
-        self.hint.setVisible(s.lhm_status != "ok")
+        try:
+            stats = psutil.net_if_stats()
+            addrs = psutil.net_if_addrs()
+        except Exception:
+            return tr("common.na"), ""
+        best = None
+        for name, st in stats.items():
+            if not st.isup:
+                continue
+            kind = _kind(name, "")
+            if kind in ("loopback", "virtual"):
+                continue
+            ips = [a.address for a in addrs.get(name, []) if a.family == socket.AF_INET and not a.address.startswith(("127.", "169.254."))]
+            if not ips:
+                continue
+            rank = {"ethernet": 0, "wifi": 1}.get(kind, 2)
+            if best is None or rank < best[0]:
+                best = (rank, kind, ips[0])
+        if best is None:
+            return tr("dash.net.disconnected"), ""
+        return tr(f"dash.net.kind.{best[1]}" if best[1] in ("ethernet", "wifi") else "dash.net.kind.other"), best[2]
 
 
 class DashboardPage(Page):
     page_id = "dashboard"
-    title_key = "dash.title"
+    title_key = "dash.welcome"
     subtitle_key = "dash.subtitle"
 
     def __init__(self, ctx):
         super().__init__(ctx)
-        self.header.add_action(button("dash.customize", None, "layout-grid", lambda: bus.navigate.emit("settings")))
+        self._build_header_tiles()
         self.grid_host = QWidget()
         self.grid = QGridLayout(self.grid_host)
         self.grid.setContentsMargins(0, 0, 0, 0)
-        self.grid.setSpacing(16)
+        self.grid.setHorizontalSpacing(18)
+        self.grid.setVerticalSpacing(18)
+        for i in range(12):
+            self.grid.setColumnStretch(i, 1)
         self.body.addWidget(self.grid_host)
-        self.lhm_hint = None
+        foot = label("dash.footer", "faint")
+        foot.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.body.addWidget(foot)
         self.tiles: dict[str, QWidget] = {}
-        self._columns = 0
+        self._mode = ""
+        self._first_show = True
         self._build_tiles()
         self.finish()
         ctx.setting_changed.connect(self._setting_changed)
+        ctx.hardware_ready.connect(lambda *_: self._update_static())
         ctx.load_hardware()
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(lambda: self._refresh_slow())
-        self._timer.start(30000)
+        self._clock = QTimer(self)
+        self._clock.timeout.connect(self._tick_clock)
+        self._clock.start(1000)
+        self._tick_clock()
 
-    def _build_tiles(self) -> None:
+    # ---- Kopfbereich -------------------------------------------------------
+    def _build_header_tiles(self):
+        clock = QFrame()
+        set_role(clock, "headTile")
+        cl = QHBoxLayout(clock)
+        cl.setContentsMargins(16, 10, 18, 10)
+        cl.setSpacing(12)
+        cl.addWidget(IconBadge("clock", "accent", 38))
+        col = QVBoxLayout()
+        col.setSpacing(0)
+        self.time_lbl = label(None, "midValue", text="")
+        self.date_lbl = label(None, "faint", text="")
+        col.addWidget(self.time_lbl)
+        col.addWidget(self.date_lbl)
+        cl.addLayout(col)
+        procs = QFrame()
+        set_role(procs, "headTile")
+        pl = QHBoxLayout(procs)
+        pl.setContentsMargins(16, 10, 18, 10)
+        pl.setSpacing(12)
+        pl.addWidget(IconBadge("chart-no-axes-column", "cat_cpu", 38))
+        col2 = QVBoxLayout()
+        col2.setSpacing(0)
+        col2.addWidget(label("dash.active_procs", "faint"))
+        self.proc_lbl = label(None, "midValue", text="–")
+        col2.addWidget(self.proc_lbl)
+        pl.addLayout(col2)
+        self.header.add_action(clock)
+        self.header.add_action(procs)
+
+    def _tick_clock(self):
+        now = datetime.now()
+        self.time_lbl.setText(now.strftime("%H:%M"))
+        months_de = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober",
+                     "November", "Dezember"]
+        from corecontrol import i18n
+
+        if i18n.current_language() == "de":
+            self.date_lbl.setText(f"{now.day}. {months_de[now.month - 1]} {now.year}")
+        else:
+            self.date_lbl.setText(now.strftime("%B %d, %Y"))
+
+    # ---- Kacheln -------------------------------------------------------------
+    def _build_tiles(self):
         for t in self.tiles.values():
             t.deleteLater()
         self.tiles = {}
-        order = self.ctx.settings.get("dashboard.tiles")
-        for tid in order:
-            tile = self._make_tile(tid)
-            if tile is not None:
-                self.tiles[tid] = tile
-        self._columns = 0
+        for tid in self.ctx.settings.get("dashboard.tiles"):
+            t = self._make_tile(tid)
+            if t is not None:
+                self.tiles[tid] = t
+        self._mode = ""
         self._relayout()
+        self._update_static()
 
     def _make_tile(self, tid: str):
-        if tid == "diagnosis":
-            return DiagnosisTile(self.ctx)
         if tid == "cpu":
-            return MetricTile("dash.cpu", "cpu", "monitoring", ring=True)
-        if tid == "ram":
-            return MetricTile("dash.ram", "memory-stick", "processes", ring=True, color="info")
+            return MetricCard("dash.cpu", "cpu", "cat_cpu", "monitoring")
         if tid == "gpu":
-            return MetricTile("dash.gpu", "monitor", "monitoring", ring=True, color="ok")
-        if tid == "disk":
-            return MetricTile("dash.disk", "hard-drive", "monitoring", y_max=None, color="warn")
-        if tid == "network":
-            return MetricTile("dash.network", "wifi", "network", y_max=None, color="info")
+            return MetricCard("dash.gpu", "monitor", "cat_gpu", "monitoring")
+        if tid == "ram":
+            return MetricCard("dash.ram", "memory-stick", "cat_ram", "processes")
         if tid == "storage":
-            t = StorageTile()
-            t.refresh(force=True)
-            return t
+            return MetricCard("dash.storage", "hard-drive", "cat_storage", "storage", spark_ymax=None)
+        if tid == "load":
+            c = Card("dash.load", "chart-line", role="tile", hover=True, badge="accent")
+            c.chart = LineChart(120, 100, "%", lambda v: f"{v:.0f}%", show_legend=True, min_height=210,
+                                time_axis=True, legend_right=True)
+            c.chart.add_series("CPU", "cat_cpu")
+            c.chart.add_series("GPU", "cat_gpu")
+            c.chart.add_series("RAM", "cat_ram")
+            c.add(c.chart, 1)
+            return c
+        if tid == "temps":
+            c = Card("dash.temps", "thermometer", role="tile", hover=True, badge="cat_temp")
+            c.bars = [BarRow(r) for r in ("cat_cpu", "cat_gpu", "cat_storage", "cat_ram")]
+            for b in c.bars:
+                c.add(b)
+            c.hint = label("dash.sensors_hint", "faint", wrap=True)
+            c.add(c.hint)
+            c.body.addStretch(1)
+            return c
+        if tid == "fans":
+            c = Card("dash.fans", "fan", role="tile", hover=True, badge="cat_gpu")
+            c.bars = [BarRow(r) for r in ("cat_cpu", "cat_gpu", "cat_gpu", "cat_gpu")]
+            for b in c.bars:
+                c.add(b)
+            c.hint = label("dash.fans_hint", "faint", wrap=True)
+            c.add(c.hint)
+            c.body.addStretch(1)
+            return c
+        if tid == "actions":
+            c = Card("dash.actions", "sparkles", role="tile", badge="accent")
+            c.add(ActionRow("play", "dash.act.diag", "dash.act.diag_sub",
+                            lambda: (bus.navigate.emit("diagnosis"), self.ctx.run_diagnosis())))
+            c.add(ActionRow("download", "dash.act.report", "dash.act.report_sub", lambda: bus.navigate.emit("reports")))
+            c.add(ActionRow("settings", "dash.act.settings", "dash.act.settings_sub", lambda: bus.navigate.emit("settings")))
+            c.body.addStretch(1)
+            return c
+        if tid == "events":
+            return EventsCard(self.ctx)
+        if tid == "network":
+            return NetworkCard(self.ctx)
+        if tid == "diagnosis":
+            from corecontrol.ui.pages.dashboard_extra import DiagnosisTile
+
+            return DiagnosisTile(self.ctx)
         if tid == "system":
-            t = SystemTile(self.ctx)
-            t.refresh()
-            return t
-        if tid == "sensors":
-            return SensorsTile()
+            from corecontrol.ui.pages.dashboard_extra import SystemTile
+
+            return SystemTile(self.ctx)
         return None
 
-    def _columns_for_width(self, w: int) -> int:
-        return 3 if w >= 1080 else 2 if w >= 700 else 1
-
-    def _relayout(self) -> None:
-        cols = self._columns_for_width(self.width() or 1200)
-        if cols == self._columns:
+    def _relayout(self):
+        w = self.width() or 1300
+        mode = "wide" if w >= 1100 else "medium" if w >= 760 else "narrow"
+        if mode == self._mode:
             return
-        self._columns = cols
+        self._mode = mode
         while self.grid.count():
             self.grid.takeAt(0)
         r = c = 0
         for tid, tile in self.tiles.items():
-            span = 2 if tid == "diagnosis" and cols >= 2 else 1
-            if c + span > cols:
+            span = SPANS.get(tid, 4)
+            if mode == "medium":
+                span = 6 if span <= 4 else 12
+            elif mode == "narrow":
+                span = 12
+            if c + span > 12:
                 r, c = r + 1, 0
             self.grid.addWidget(tile, r, c, 1, span)
             c += span
-            if c >= cols:
+            if c >= 12:
                 r, c = r + 1, 0
-        for i in range(3):
-            self.grid.setColumnStretch(i, 1 if i < cols else 0)
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
@@ -385,88 +408,139 @@ class DashboardPage(Page):
             if s:
                 self.on_sample(s)
 
-    def _refresh_slow(self):
-        t = self.tiles.get("storage")
-        if t:
-            t.refresh()
+    def _update_static(self):
+        hw = self.ctx.hardware or {}
+        cpu = hw.get("cpu") or {}
+        gpus = hw.get("gpus") or []
+        mem = hw.get("memory") or {}
+        if "cpu" in self.tiles:
+            self.tiles["cpu"].subtitle.setText(cpu.get("name") or tr("common.loading" if self.ctx.hardware is None else "common.na"))
+        if "gpu" in self.tiles:
+            self.tiles["gpu"].subtitle.setText(gpus[0]["name"] if gpus else tr("common.loading" if self.ctx.hardware is None else "common.na"))
+        if "ram" in self.tiles:
+            mtype = next((m.get("type") for m in mem.get("modules") or [] if m.get("type")), "")
+            self.tiles["ram"].subtitle.setText(f"{fmt.bytes_(psutil.virtual_memory().total, digits=0)} {mtype}".strip())
+        if "storage" in self.tiles:
+            vol = next((v for v in hw.get("volumes") or [] if v.get("system")), None)
+            disk = None
+            if vol is not None:
+                disk = next((d for d in hw.get("disks") or [] if str(d.get("number")) == str(vol.get("disk"))), None)
+            if disk:
+                self.tiles["storage"].subtitle.setText(f"{disk.get('model')} · {disk.get('media') or ''}".strip(" ·"))
+            else:
+                self.tiles["storage"].subtitle.setText(self._system_mount())
 
+    @staticmethod
+    def _system_mount() -> str:
+        import os
+
+        from corecontrol.core.platform import IS_WINDOWS
+
+        return (os.environ.get("SystemDrive", "C:") + "\\") if IS_WINDOWS else "/"
+
+    # ---- Anzeigen ------------------------------------------------------------
     def on_show(self) -> None:
         if self.ctx.sampler:
-            for s in self.ctx.sampler.store.window(60):
-                self._push(s, sparks_only=True)
+            hist = self.ctx.sampler.store.window(120)
+            for s in hist[:-1]:
+                self._push_series(s, animate=False)
             s = self.ctx.sampler.store.latest()
             if s:
                 self.on_sample(s)
-        t = self.tiles.get("storage")
-        if t:
-            t.refresh(force=True)
+        if self._first_show:
+            self._first_show = False
+            for i, t in enumerate(self.tiles.values()):
+                anim.fade_in(t, 300, 40 * i)
 
-    def _push(self, s, sparks_only=False) -> None:
+    def _push_series(self, s, animate=True):
         g = s.primary_gpu
-        for tid, val in (("cpu", s.cpu_percent), ("ram", s.ram_percent), ("gpu", g.util if g else None),
-                         ("disk", (s.disk_read_bps or 0) + (s.disk_write_bps or 0) if s.disk_read_bps is not None else None),
-                         ("network", s.net_down_bps)):
-            t = self.tiles.get(tid)
-            if isinstance(t, MetricTile):
-                t.spark.push(val)
+        tiles = self.tiles
+        if "cpu" in tiles:
+            tiles["cpu"].spark.push(s.cpu_percent, animate)
+        if "gpu" in tiles:
+            tiles["gpu"].spark.push(g.util if g else None, animate)
+        if "ram" in tiles:
+            tiles["ram"].spark.push(s.ram_percent, animate)
+        if "storage" in tiles:
+            tiles["storage"].spark.push((s.disk_read_bps or 0) + (s.disk_write_bps or 0) if s.disk_read_bps is not None else None, animate)
+        if "load" in tiles:
+            tiles["load"].chart.push(s.cpu_percent, g.util if g else None, s.ram_percent, ts=s.ts, animate=animate)
+        if "network" in tiles and not animate:
+            tiles["network"].spark.push(s.net_down_bps, False)
 
     def on_sample(self, s) -> None:
         st = self.ctx.settings
-        self._push(s)
-        t = self.tiles.get("cpu")
-        if isinstance(t, MetricTile):
-            t.value.setText(fmt.pct(s.cpu_percent))
-            t.ring.set_value(s.cpu_percent, _level(s.cpu_percent, st.get("thresholds.cpu_load_warn")))
-            t.sub1.setText(tr("dash.cpu_clock", clock=fmt.mhz(s.cpu_freq_mhz)))
-            t.sub2.setText(tr("dash.cpu_temp_line", temp=fmt.temp(s.cpu_temp)))
-            self._temp_chip(t, s.cpu_temp, st.get("thresholds.cpu_temp_warn"), st.get("thresholds.cpu_temp_crit"))
-        t = self.tiles.get("ram")
-        if isinstance(t, MetricTile):
-            t.value.setText(fmt.pct(s.ram_percent))
-            t.ring.set_value(s.ram_percent, _level(s.ram_percent, st.get("thresholds.ram_warn")))
-            t.sub1.setText(tr("dash.used_of", used=fmt.bytes_(s.ram_used), total=fmt.bytes_(s.ram_total)))
-            t.sub2.setText(tr("dash.swap_line", used=fmt.bytes_(s.swap_used)) if s.swap_total else "")
-        t = self.tiles.get("gpu")
-        if isinstance(t, MetricTile):
+        self._push_series(s)
+        self.proc_lbl.setText(str(s.process_count or "–"))
+        t = self.tiles
+        na = tr("common.na")
+        if "cpu" in t:
+            lvl = "critical" if (s.cpu_temp or 0) >= st.get("thresholds.cpu_temp_crit") else "normal"
+            t["cpu"].ring.set_value(s.cpu_percent, fmt.pct(s.cpu_percent), tr("dash.load_caption"), lvl)
+            t["cpu"].set_stats(fmt.mhz(s.cpu_freq_mhz), tr("dash.clock"), fmt.temp(s.cpu_temp), tr("dash.temperature"))
+        if "gpu" in t:
             g = s.primary_gpu
             if g is None:
-                t.value.setText(tr("common.na"))
-                t.ring.set_value(None)
-                t.sub1.setText(tr("dash.gpu_none"))
-                t.sub2.setText("")
-                t.set_chip(None)
+                t["gpu"].ring.set_value(None, "–", na)
+                t["gpu"].set_stats(na, tr("dash.clock"), na, tr("dash.temperature"))
             else:
-                t.value.setText(fmt.pct(g.util))
-                t.ring.set_value(g.util)
-                vram = tr("dash.vram_line", used=fmt.bytes_(g.vram_used), total=fmt.bytes_(g.vram_total)) \
-                    if g.vram_used is not None else tr("dash.vram_na")
-                t.sub1.setText(f"{g.name}")
-                t.sub2.setText(f"{vram} · {fmt.temp(g.temp)}")
-                self._temp_chip(t, g.temp, st.get("thresholds.gpu_temp_warn"), st.get("thresholds.gpu_temp_crit"))
-        t = self.tiles.get("disk")
-        if isinstance(t, MetricTile):
-            total = None if s.disk_read_bps is None else (s.disk_read_bps or 0) + (s.disk_write_bps or 0)
-            t.value.setText(fmt.rate_bytes(total))
-            t.sub1.setText(tr("dash.disk_rw", read=fmt.rate_bytes(s.disk_read_bps), write=fmt.rate_bytes(s.disk_write_bps)))
-            t.sub2.setText(tr("dash.disk_active", pct=fmt.pct(s.disk_active_pct)))
-        t = self.tiles.get("network")
-        if isinstance(t, MetricTile):
-            t.value.setText(fmt.rate_bits(s.net_down_bps))
-            t.sub1.setText(tr("dash.net_line", down=fmt.rate_bits(s.net_down_bps), up=fmt.rate_bits(s.net_up_bps)))
-            t.sub2.setText(tr("dash.net_hint"))
-        t = self.tiles.get("system")
-        if isinstance(t, SystemTile) and int(s.ts) % 10 == 0:
-            t.refresh(s)
-        t = self.tiles.get("sensors")
-        if isinstance(t, SensorsTile):
-            t.update_sample(s)
+                t["gpu"].ring.set_value(g.util, fmt.pct(g.util), tr("dash.load_caption"))
+                if g.clock_mhz is not None:
+                    v1, c1 = fmt.mhz(g.clock_mhz), tr("dash.clock")
+                else:
+                    v1, c1 = (fmt.bytes_(g.vram_used) if g.vram_used is not None else na), tr("dash.vram")
+                t["gpu"].set_stats(v1, c1, fmt.temp(g.temp), tr("dash.temperature"))
+        if "ram" in t:
+            lvl = "warning" if (s.ram_percent or 0) >= st.get("thresholds.ram_warn") else "normal"
+            t["ram"].ring.set_value(s.ram_percent, fmt.pct(s.ram_percent), tr("dash.load_caption"), lvl)
+            free = (s.ram_total - s.ram_used) if s.ram_total is not None and s.ram_used is not None else None
+            t["ram"].set_stats(fmt.bytes_(s.ram_used), tr("dash.used"), fmt.bytes_(free), tr("dash.free"))
+        if "storage" in t and int(s.ts) % 5 == 0 or "storage" in t and t["storage"].v1.text() == "–":
+            try:
+                u = psutil.disk_usage(self._system_mount())
+                lvl = "critical" if 100 - u.percent < st.get("thresholds.disk_free_crit_pct") else \
+                    "warning" if 100 - u.percent < st.get("thresholds.disk_free_warn_pct") else "normal"
+                t["storage"].ring.set_value(u.percent, fmt.pct(u.percent), tr("dash.occupied"), lvl)
+                t["storage"].set_stats(fmt.bytes_(u.used), tr("dash.used"), fmt.bytes_(u.free), tr("dash.free"))
+            except Exception:
+                t["storage"].ring.set_value(None, "–", na)
+        if "temps" in t:
+            self._update_temps(t["temps"], s)
+        if "fans" in t:
+            self._update_fans(t["fans"], s)
+        if "network" in t:
+            t["network"].update_sample(s)
 
-    def _temp_chip(self, tile: Tile, value, warn, crit) -> None:
-        if value is None:
-            tile.set_chip(None)
-        elif value >= crit:
-            tile.set_chip(fmt.temp(value), "critical")
-        elif value >= warn:
-            tile.set_chip(fmt.temp(value), "warning")
-        else:
-            tile.set_chip(fmt.temp(value), "ok")
+    def _update_temps(self, card, s):
+        g = s.primary_gpu
+        board = next((x.value for x in s.sensors if x.hw_kind == "board" and x.kind == "temperature" and 0 < x.value < 120), None)
+        drive = next((x.value for x in s.sensors if x.hw_kind == "storage" and x.kind == "temperature" and 0 < x.value < 120), None)
+        if drive is None:
+            for d in (self.ctx.hardware or {}).get("disks") or []:
+                rel = d.get("reliability") or {}
+                if rel.get("temperature"):
+                    drive = rel["temperature"]
+                    break
+        rows = [("CPU", s.cpu_temp), ("GPU", g.temp if g else None), (tr("dash.board"), board), (tr("dash.drive"), drive)]
+        for bar, (name, val) in zip(card.bars, rows):
+            bar.set(name, fmt.temp(val), None if val is None else val / 100.0)
+        card.hint.setVisible(s.lhm_status != "ok")
+
+    def _update_fans(self, card, s):
+        fans = [x for x in s.sensors if x.kind == "fan" and x.value > 0]
+        g = s.primary_gpu
+        rows: list[tuple[str, str, float | None]] = []
+        mx = max([f.value for f in fans] + [2000.0])
+        for f in fans[:4]:
+            rows.append((f.name, f"{fmt.number(f.value)} RPM", f.value / (mx * 1.15)))
+        if g is not None and g.fan_pct is not None and len(rows) < 4:
+            rows.append((tr("dash.gpu_fan"), fmt.pct(g.fan_pct), g.fan_pct / 100))
+        for i, bar in enumerate(card.bars):
+            if i < len(rows):
+                bar.setVisible(True)
+                bar.set(rows[i][0], rows[i][1], rows[i][2])
+            else:
+                bar.setVisible(i == 0 and not rows)
+                if i == 0 and not rows:
+                    bar.set(tr("dash.fans"), tr("common.na"), None)
+        card.hint.setVisible(not rows)

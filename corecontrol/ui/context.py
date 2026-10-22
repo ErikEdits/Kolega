@@ -29,8 +29,16 @@ class AppContext(QObject):
         self.tray = None
         self.diagnosis_result = None
         self.diagnosis_running = False
+        self.last_network = None
         self.hardware: dict[str, Any] | None = None
         self._hardware_loading = False
+        from corecontrol.core import paths
+        from corecontrol.core.activity import ActivityLog
+
+        try:
+            self.activity = ActivityLog(paths.data_dir() / "activity.json")
+        except Exception:
+            self.activity = ActivityLog(None)
         settings.on_change(lambda k, v: self.setting_changed.emit(k, v))
 
     # ---- Diagnose ---------------------------------------------------------
@@ -51,6 +59,16 @@ class AppContext(QObject):
             self.diagnosis_result = result
             if result is not None and result.hardware:
                 self.hardware = result.hardware
+            if result is not None and result.network is not None:
+                self.last_network = result.network
+            if result is not None:
+                crit, warn = result.count("critical"), result.count("warning")
+                if crit:
+                    self.activity.add("critical", "act.diag_crit", "diagnosis", n=crit)
+                elif warn:
+                    self.activity.add("warning", "act.diag_warn", "diagnosis", n=warn)
+                else:
+                    self.activity.add("ok", "act.diag_ok", "diagnosis")
             self.diagnosis_finished.emit(result)
 
         def failed(exc):

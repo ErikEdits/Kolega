@@ -531,7 +531,8 @@ def rule_power(d: DiagInput) -> list[Finding]:
 def rule_network(d: DiagInput) -> list[Finding]:
     net = d.net
     if net is None:
-        d.skipped.append(("network", T("diag.skip.network")))
+        if not any(area == "network" for area, _ in d.skipped):
+            d.skipped.append(("network", T("diag.skip.network")))
         return []
     out: list[Finding] = []
     acts = [("action.open_network", "nav:network")]

@@ -29,6 +29,7 @@ from corecontrol.core.platform import IS_WINDOWS, open_path, open_url
 from corecontrol.core.settings import TILE_IDS
 from corecontrol.i18n import tr
 from corecontrol.ui.bus import bind_text, bus, on_refresh
+from corecontrol.ui import msg
 from corecontrol.ui.pages.base import Page
 from corecontrol.ui.theme import ACCENT_PRESETS, theme
 from corecontrol.ui.widgets.common import Card, SettingRow, Toggle, button, label, separator, tool_button
@@ -44,6 +45,7 @@ class SettingsPage(Page):
     def __init__(self, ctx):
         super().__init__(ctx)
         self.st = ctx.settings
+        self.sections: dict = {}
         self._build_appearance()
         self._build_dashboard()
         self._build_monitoring()
@@ -56,6 +58,28 @@ class SettingsPage(Page):
         self.finish()
 
     # ---- Hilfen ------------------------------------------------------------
+    def _add_section(self, name: str, card) -> None:
+        self.sections[name] = card
+        self.body.addWidget(card)
+
+    def scroll_to(self, name: str) -> None:
+        card = self.sections.get(name)
+        if card is not None and self.scroll_area is not None:
+            from corecontrol.ui import anim
+            from PySide6.QtCore import QPropertyAnimation
+
+            bar = self.scroll_area.verticalScrollBar()
+            target = max(0, card.y() - 12)
+            if anim.allow("transition"):
+                a = QPropertyAnimation(bar, b"value", self)
+                a.setDuration(350)
+                a.setStartValue(bar.value())
+                a.setEndValue(target)
+                a.setEasingCurve(anim.EASE)
+                a.start()
+            else:
+                bar.setValue(target)
+
     def _toggle(self, key: str) -> Toggle:
         t = Toggle(self.st.get(key))
         t.toggled.connect(lambda v: self.st.set(key, bool(v)))
@@ -148,7 +172,12 @@ class SettingsPage(Page):
         card.add(SettingRow("set.language", "set.language_desc",
                             self._combo("ui.language", [("system", "set.lang_system"), ("de", "set.lang_de"),
                                                         ("en", "set.lang_en")]), "languages"))
-        self.body.addWidget(card)
+        card.add(separator())
+        card.add(SettingRow("set.animations", "set.animations_desc",
+                            self._combo("ui.animations", [("system", "set.anim_system"), ("full", "set.anim_full"),
+                                                          ("reduced", "set.anim_reduced"), ("off", "set.anim_off")]),
+                            "sparkle"))
+        self._add_section("appearance", card)
 
     def _pick_color(self):
         current = QColor(theme.palette.accent)
@@ -176,7 +205,7 @@ class SettingsPage(Page):
         lay.addLayout(btns)
         card.add_layout(lay)
         on_refresh(self.tile_list, self._fill_tiles)
-        self.body.addWidget(card)
+        self._add_section("dashboard", card)
 
     def _fill_tiles(self):
         self.tile_list.blockSignals(True)
@@ -228,7 +257,7 @@ class SettingsPage(Page):
         row.addWidget(button("set.lhm_download", "ghost", "external-link", lambda: open_url(LHM_URL)))
         card.add_layout(row)
         card.add(label("set.lhm_help", "faint", wrap=True))
-        self.body.addWidget(card)
+        self._add_section("monitoring", card)
 
     def on_sample(self, s):
         key = {"ok": "set.lhm_status_ok", "not_running": "set.lhm_status_off", "off": "set.lhm_status_disabled"}.get(
@@ -250,7 +279,7 @@ class SettingsPage(Page):
         card.add(separator())
         card.add(SettingRow("set.notify", "set.notify_desc", self._toggle("notify.enabled"), "bell"))
         card.add(SettingRow("set.cooldown", "set.cooldown_desc", self._spin("notify.cooldown_min", 1, 1440, "min"), "clock"))
-        self.body.addWidget(card)
+        self._add_section("thresholds", card)
 
     # ---- Verlauf -----------------------------------------------------------
     def _build_history(self):
@@ -264,7 +293,7 @@ class SettingsPage(Page):
         row.addWidget(button("set.history_clear", "danger", "trash-2", self._clear_history))
         row.addStretch(1)
         card.add_layout(row)
-        self.body.addWidget(card)
+        self._add_section("history", card)
 
     def _update_history_info(self):
         h = self.ctx.history
@@ -283,8 +312,7 @@ class SettingsPage(Page):
     def _clear_history(self):
         if self.ctx.history is None:
             return
-        r = QMessageBox.question(self, tr("set.history_clear"), tr("set.history_clear_confirm"))
-        if r == QMessageBox.StandardButton.Yes:
+        if msg.ask(self, tr("set.history_clear"), tr("set.history_clear_confirm")):
             self.ctx.history.clear()
             self._update_history_info()
 
@@ -297,7 +325,7 @@ class SettingsPage(Page):
         card.add(SettingRow("set.tray", "set.tray_desc", self._toggle("tray.enabled"), "pin"))
         card.add(SettingRow("set.min_tray", "set.min_tray_desc", self._toggle("tray.minimize_to_tray"), "minus"))
         card.add(SettingRow("set.close_tray", "set.close_tray_desc", self._toggle("tray.close_to_tray"), "x"))
-        self.body.addWidget(card)
+        self._add_section("startup", card)
 
     # ---- Automatik ---------------------------------------------------------
     def _build_automation(self):
@@ -309,7 +337,7 @@ class SettingsPage(Page):
         card.add(SettingRow("set.update_check", "set.update_check_desc", self._toggle("updates.check_on_start"), "download"))
         card.add(separator())
         card.add(SettingRow("set.never_auto", "set.never_auto_desc", label("set.locked", "faint"), "lock"))
-        self.body.addWidget(card)
+        self._add_section("auto", card)
 
     # ---- Datenschutz -------------------------------------------------------
     def _build_privacy(self):
@@ -324,7 +352,7 @@ class SettingsPage(Page):
         row.addWidget(button("set.reset", None, "refresh-cw", self._reset))
         row.addStretch(1)
         card.add_layout(row)
-        self.body.addWidget(card)
+        self._add_section("privacy", card)
 
     def _export(self):
         path, _ = QFileDialog.getSaveFileName(self, tr("set.export"), str(Path.home() / "CoreControl-Einstellungen.json"),
@@ -332,7 +360,7 @@ class SettingsPage(Page):
         if not path:
             return
         ok = self.st.export_to(Path(path))
-        QMessageBox.information(self, tr("set.export"), tr("set.export_ok" if ok else "set.export_failed", path=path))
+        msg.info(self, tr("set.export"), tr("set.export_ok" if ok else "set.export_failed", path=path))
 
     def _import(self):
         path, _ = QFileDialog.getOpenFileName(self, tr("set.import"), str(Path.home()), "JSON (*.json)")
@@ -341,19 +369,18 @@ class SettingsPage(Page):
         try:
             warnings = self.st.import_from(Path(path))
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            QMessageBox.warning(self, tr("set.import"), tr("set.import_failed", error=str(exc)))
+            msg.warn(self, tr("set.import"), tr("set.import_failed", error=str(exc)))
             return
         msg = tr("set.import_ok")
         if warnings:
             msg += "\n\n" + tr("set.import_warnings", n=len(warnings))
-        QMessageBox.information(self, tr("set.import"), msg)
+        msg.info(self, tr("set.import"), msg)
         self._fill_tiles()
 
     def _reset(self):
-        r = QMessageBox.question(self, tr("set.reset"), tr("set.reset_confirm"))
-        if r == QMessageBox.StandardButton.Yes:
+        if msg.ask(self, tr("set.reset"), tr("set.reset_confirm")):
             self.st.reset()
-            QMessageBox.information(self, tr("set.reset"), tr("set.reset_done"))
+            msg.info(self, tr("set.reset"), tr("set.reset_done"))
 
     # ---- Über --------------------------------------------------------------
     def _build_about(self):
@@ -369,7 +396,7 @@ class SettingsPage(Page):
         card.add_layout(row)
         self.update_result = label(None, "faint", text="", wrap=True)
         card.add(self.update_result)
-        self.body.addWidget(card)
+        self._add_section("about", card)
 
     def _check_updates(self):
         from corecontrol.ui.workers import run_task
@@ -382,8 +409,7 @@ class SettingsPage(Page):
             self.update_btn.setEnabled(True)
             self.update_result.setText(res.describe())
             if res.update_available and res.url:
-                r = QMessageBox.question(self, tr("updates.title"), tr("updates.open_page", version=res.latest_version))
-                if r == QMessageBox.StandardButton.Yes:
+                if msg.ask(self, tr("updates.title"), tr("updates.open_page", version=res.latest_version)):
                     open_url(res.url)
 
         def failed(exc):

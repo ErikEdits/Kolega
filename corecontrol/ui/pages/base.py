@@ -22,12 +22,12 @@ class Page(QWidget):
         outer.setSpacing(0)
         self.header = PageHeader(self.title_key, self.subtitle_key)
         if self.scrollable:
-            self.scroll = ScrollPage()
-            outer.addWidget(self.scroll)
-            self.body = self.scroll.content
+            self.scroll_area = ScrollPage()
+            outer.addWidget(self.scroll_area)
+            self.body = self.scroll_area.content
             self.body.addWidget(self.header)
         else:
-            self.scroll = None
+            self.scroll_area = None
             container = QWidget()
             container.setObjectName("pageRoot")
             self.body = QVBoxLayout(container)

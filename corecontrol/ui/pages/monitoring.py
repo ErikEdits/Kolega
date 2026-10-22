@@ -27,44 +27,44 @@ class MonitoringPage(Page):
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(16)
 
-        self.cpu_card = Card("mon.cpu", "cpu")
-        self.cpu_chart = LineChart(120, 100, "%", lambda v: f"{v:.0f}%")
-        self.cpu_chart.add_series(tr("mon.load"), "accent")
+        self.cpu_card = Card("mon.cpu", "cpu", badge="cat_cpu", hover=True)
+        self.cpu_chart = LineChart(120, 100, "%", lambda v: f"{v:.0f}%", time_axis=True)
+        self.cpu_chart.add_series(tr("mon.load"), "cat_cpu")
         self.cpu_card.add(self.cpu_chart)
         self.cpu_info = KeyValueGrid(2)
         self.cpu_card.add(self.cpu_info)
 
-        self.ram_card = Card("mon.ram", "memory-stick")
-        self.ram_chart = LineChart(120, 100, "%", lambda v: f"{v:.0f}%")
-        self.ram_chart.add_series(tr("mon.used"), "info")
+        self.ram_card = Card("mon.ram", "memory-stick", badge="cat_ram", hover=True)
+        self.ram_chart = LineChart(120, 100, "%", lambda v: f"{v:.0f}%", time_axis=True)
+        self.ram_chart.add_series(tr("mon.used"), "cat_ram")
         self.ram_card.add(self.ram_chart)
         self.ram_info = KeyValueGrid(2)
         self.ram_card.add(self.ram_info)
 
-        self.gpu_card = Card("mon.gpu", "monitor")
-        self.gpu_chart = LineChart(120, 100, "%", lambda v: f"{v:.0f}%")
-        self.gpu_chart.add_series(tr("mon.load"), "ok")
+        self.gpu_card = Card("mon.gpu", "monitor", badge="cat_gpu", hover=True)
+        self.gpu_chart = LineChart(120, 100, "%", lambda v: f"{v:.0f}%", time_axis=True)
+        self.gpu_chart.add_series(tr("mon.load"), "cat_gpu")
         self.gpu_card.add(self.gpu_chart)
         self.gpu_info = KeyValueGrid(2)
         self.gpu_card.add(self.gpu_info)
 
-        self.temp_card = Card("mon.temps", "thermometer")
-        self.temp_chart = LineChart(120, 100, "°C", lambda v: f"{v:.0f} °C")
+        self.temp_card = Card("mon.temps", "thermometer", badge="cat_temp", hover=True)
+        self.temp_chart = LineChart(120, 100, "°C", lambda v: f"{v:.0f} °C", time_axis=True)
         self.temp_chart.add_series("CPU", "crit", fill=False)
         self.temp_chart.add_series("GPU", "warn", fill=False)
         self.temp_card.add(self.temp_chart)
         self.temp_hint = label("mon.temp_hint", "faint", wrap=True)
         self.temp_card.add(self.temp_hint)
 
-        self.disk_card = Card("mon.disk", "hard-drive")
-        self.disk_chart = LineChart(120, None, "", lambda v: fmt.rate_bytes(v))
-        self.disk_chart.add_series(tr("mon.read"), "accent")
+        self.disk_card = Card("mon.disk", "hard-drive", badge="cat_storage", hover=True)
+        self.disk_chart = LineChart(120, None, "", lambda v: fmt.rate_bytes(v), time_axis=True)
+        self.disk_chart.add_series(tr("mon.read"), "cat_storage")
         self.disk_chart.add_series(tr("mon.write"), "warn")
         self.disk_card.add(self.disk_chart)
 
-        self.net_card = Card("mon.net", "wifi")
-        self.net_chart = LineChart(120, None, "", lambda v: fmt.rate_bits(v))
-        self.net_chart.add_series(tr("mon.down"), "info")
+        self.net_card = Card("mon.net", "wifi", badge="cat_net", hover=True)
+        self.net_chart = LineChart(120, None, "", lambda v: fmt.rate_bits(v), time_axis=True)
+        self.net_chart.add_series(tr("mon.down"), "cat_net")
         self.net_chart.add_series(tr("mon.up"), "ok")
         self.net_card.add(self.net_chart)
         self.net_card.add(label("mon.net_hint", "faint", wrap=True))
@@ -74,7 +74,7 @@ class MonitoringPage(Page):
         self._cols = 0
         self.body.addWidget(grid_host)
 
-        self.sensor_card = Card("mon.sensors", "gauge")
+        self.sensor_card = Card("mon.sensors", "gauge", badge="accent")
         self.sensor_status = label(None, "muted", text="", wrap=True)
         self.sensor_card.add(self.sensor_status)
         self.table = QTableWidget(0, 4)
@@ -118,20 +118,21 @@ class MonitoringPage(Page):
             return
         for c in (self.cpu_chart, self.ram_chart, self.gpu_chart, self.temp_chart, self.disk_chart, self.net_chart):
             c.clear()
-        for s in self.ctx.sampler.store.window(120):
-            self._push(s)
+        for s in self.ctx.sampler.store.window(120)[:-1]:
+            self._push(s, animate=False)
         s = self.ctx.sampler.store.latest()
         if s:
             self.on_sample(s)
 
-    def _push(self, s):
+    def _push(self, s, animate=True):
         g = s.primary_gpu
-        self.cpu_chart.push(s.cpu_percent)
-        self.ram_chart.push(s.ram_percent)
-        self.gpu_chart.push(g.util if g else None)
-        self.temp_chart.push(s.cpu_temp, g.temp if g else None)
-        self.disk_chart.push(s.disk_read_bps, s.disk_write_bps)
-        self.net_chart.push(s.net_down_bps, s.net_up_bps)
+        kw = dict(ts=s.ts, animate=animate)
+        self.cpu_chart.push(s.cpu_percent, **kw)
+        self.ram_chart.push(s.ram_percent, **kw)
+        self.gpu_chart.push(g.util if g else None, **kw)
+        self.temp_chart.push(s.cpu_temp, g.temp if g else None, **kw)
+        self.disk_chart.push(s.disk_read_bps, s.disk_write_bps, **kw)
+        self.net_chart.push(s.net_down_bps, s.net_up_bps, **kw)
 
     def on_sample(self, s):
         self._push(s)

@@ -85,8 +85,10 @@ def main(argv: list[str] | None = None) -> int:
     settings.load()
     i18n.set_language(i18n.resolve_language(settings.get("ui.language")))
 
+    from corecontrol.ui import anim
     from corecontrol.ui.theme import theme
 
+    anim.install(app, settings.get("ui.animations"))
     theme.apply(settings.get("ui.theme"), settings.get("ui.accent"))
 
     from corecontrol.monitoring.live import Sampler
@@ -195,6 +197,10 @@ def _wire_settings(ctx, window) -> None:
         st = ctx.settings
         if key in ("ui.theme", "ui.accent"):
             theme.apply(st.get("ui.theme"), st.get("ui.accent"))
+        elif key == "ui.animations":
+            from corecontrol.ui import anim
+
+            anim.set_level(value)
         elif key == "ui.language":
             i18n.set_language(i18n.resolve_language(value))
             bus.language_changed.emit()

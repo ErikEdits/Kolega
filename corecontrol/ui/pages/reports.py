@@ -16,6 +16,7 @@ from corecontrol.reports.feedback import build_feedback
 from corecontrol.reports.report import build_report, make_redactor, save_report
 from corecontrol.ui.bus import bind_text, on_refresh
 from corecontrol.ui.dialogs import show_text_dialog
+from corecontrol.ui import msg
 from corecontrol.ui.pages.base import Page
 from corecontrol.ui.widgets.common import Card, button, label
 
@@ -117,10 +118,10 @@ class ReportsPage(Page):
         try:
             saved = save_report(self._build(), Path(path))
         except OSError as exc:
-            QMessageBox.warning(self, tr("common.error"), tr("rep.save_failed", error=str(exc)))
+            msg.warn(self, tr("common.error"), tr("rep.save_failed", error=str(exc)))
             return
-        r = QMessageBox.question(self, tr("rep.saved_title"), tr("rep.saved", path=str(saved)))
-        if r == QMessageBox.StandardButton.Yes:
+        self.ctx.activity.add("ok", "act.report", "reports", kind=kind.upper())
+        if msg.ask(self, tr("rep.saved_title"), tr("rep.saved", path=str(saved))):
             open_path(str(saved))
 
     def _show_log(self):
@@ -138,6 +139,6 @@ class ReportsPage(Page):
         try:
             Path(path).write_text(text, encoding="utf-8")
         except OSError as exc:
-            QMessageBox.warning(self, tr("common.error"), tr("rep.save_failed", error=str(exc)))
+            msg.warn(self, tr("common.error"), tr("rep.save_failed", error=str(exc)))
             return
-        QMessageBox.information(self, tr("rep.saved_title"), tr("rep.feedback_saved", path=path))
+        msg.info(self, tr("rep.saved_title"), tr("rep.feedback_saved", path=path))

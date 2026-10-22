@@ -61,7 +61,9 @@ def label(text_key: str | None = None, role: str | None = None, text: str | None
 
 def button(text_key: str | None = None, role: str | None = None, icon: str | None = None,
            on_click: Callable | None = None, text: str | None = None, icon_role: str | None = None) -> QPushButton:
-    btn = QPushButton()
+    from corecontrol.ui.widgets.controls import AnimatedButton
+
+    btn = AnimatedButton()
     if text_key:
         bind_text(btn, text_key)
     elif text:
@@ -98,9 +100,16 @@ def icon_label(name: str, role: str = "text2", size: int = 18) -> QLabel:
 
 class Card(QFrame):
     def __init__(self, title_key: str | None = None, icon: str | None = None, role: str = "card",
-                 margins: int = 18, spacing: int = 12, parent: QWidget | None = None):
+                 margins: int = 18, spacing: int = 12, parent: QWidget | None = None, hover: bool = False,
+                 badge: str | None = None):
         super().__init__(parent)
         set_role(self, role)
+        self._hover_glow = hover
+        if hover:
+            from corecontrol.ui.widgets.controls import _Animated
+
+            _Animated._anim_init(self)
+            self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.outer = QVBoxLayout(self)
         self.outer.setContentsMargins(margins, margins - 2, margins, margins)
         self.outer.setSpacing(spacing)
@@ -109,7 +118,9 @@ class Card(QFrame):
             self.header = QHBoxLayout()
             self.header.setSpacing(8)
             if icon:
-                self.header.addWidget(icon_label(icon, "text2", 17))
+                from corecontrol.ui.widgets.controls import IconBadge
+
+                self.header.addWidget(IconBadge(icon, badge or "accent", 34))
             self.title = label(title_key, "h2")
             self.header.addWidget(self.title)
             self.header.addStretch(1)
@@ -117,6 +128,33 @@ class Card(QFrame):
         self.body = QVBoxLayout()
         self.body.setSpacing(spacing)
         self.outer.addLayout(self.body)
+
+    # --- weiches Aufleuchten des Rahmens beim Überfahren (nur wenn hover=True) ---
+    def enterEvent(self, ev):
+        if self._hover_glow:
+            from corecontrol.ui.widgets.controls import _Animated
+
+            _Animated._animate(self, "hover", 1.0, 200, "hover")
+        super().enterEvent(ev)
+
+    def leaveEvent(self, ev):
+        if self._hover_glow:
+            from corecontrol.ui.widgets.controls import _Animated
+
+            _Animated._animate(self, "hover", 0.0, 260, "hover")
+        super().leaveEvent(ev)
+
+    def _step(self, dt):
+        from corecontrol.ui.widgets.controls import _Animated
+
+        return _Animated._step(self, dt)
+
+    def paintEvent(self, ev):
+        super().paintEvent(ev)
+        if self._hover_glow:
+            from corecontrol.ui.widgets.controls import HoverCard
+
+            HoverCard.paint_hover(self)
 
     def align_top(self) -> "Card":
         """Inhalt oben halten, wenn die Karte höher ist als ihr Inhalt (z. B. in einem Raster)."""
@@ -167,12 +205,12 @@ class PageHeader(QWidget):
             self.subtitle = label(subtitle_key, "subtitle", wrap=True)
             left.addWidget(self.subtitle)
         lay.addLayout(left, 1)
-        self.actions = QHBoxLayout()
-        self.actions.setSpacing(8)
-        lay.addLayout(self.actions)
+        self.action_row = QHBoxLayout()
+        self.action_row.setSpacing(8)
+        lay.addLayout(self.action_row)
 
     def add_action(self, w: QWidget) -> QWidget:
-        self.actions.addWidget(w, 0, Qt.AlignmentFlag.AlignBottom)
+        self.action_row.addWidget(w, 0, Qt.AlignmentFlag.AlignBottom)
         return w
 
 

@@ -31,6 +31,7 @@ from corecontrol.storage.safety import classify, ext_category, is_protected_path
 from corecontrol.system.tools import run_tool
 from corecontrol.ui.bus import bind_text, on_refresh
 from corecontrol.ui.dialogs import ConfirmDialog
+from corecontrol.ui import msg
 from corecontrol.ui.pages.base import Page
 from corecontrol.ui.widgets.charts import Donut
 from corecontrol.ui.widgets.common import Card, Chip, KeyValueGrid, button, label, set_prop
@@ -151,9 +152,9 @@ class StoragePage(Page):
         ok = cleanup.empty_recycle_bin(confirmed=True)
         after = cleanup.recycle_bin_info()
         if ok and after is not None and after[1] == 0:
-            QMessageBox.information(self, tr("sto.recycle"), tr("sto.recycle_done"))
+            msg.info(self, tr("sto.recycle"), tr("sto.recycle_done"))
         else:
-            QMessageBox.warning(self, tr("sto.recycle"), tr("sto.recycle_partial", n=after[1] if after else "?"))
+            msg.warn(self, tr("sto.recycle"), tr("sto.recycle_partial", n=after[1] if after else "?"))
         self._render_drives()
 
     # ---- Analyse -------------------------------------------------------------
@@ -394,14 +395,14 @@ class StoragePage(Page):
     def _delete_file(self):
         path = self.files_table.selected_key()
         if not path:
-            QMessageBox.information(self, tr("sto.delete_file"), tr("sto.select_file"))
+            msg.info(self, tr("sto.delete_file"), tr("sto.select_file"))
             return
         if not os.path.exists(path):
-            QMessageBox.information(self, tr("sto.delete_file"), tr("sto.file_gone"))
+            msg.info(self, tr("sto.delete_file"), tr("sto.file_gone"))
             return
         cls = classify(path)
         if is_protected_path(path):
-            QMessageBox.warning(self, tr("sto.delete_file"), tr("sto.protected", path=path, cls=tr(f"sto.class.{cls}")))
+            msg.warn(self, tr("sto.delete_file"), tr("sto.protected", path=path, cls=tr(f"sto.class.{cls}")))
             return
         size = self._sizes.get(path, 0)
         msg = tr("sto.delete_confirm", cls=tr(f"sto.class.{cls}"), advice=tr(f"sto.advice.{cls}"))
@@ -412,12 +413,12 @@ class StoragePage(Page):
             return
         res = cleanup.delete_files([(path, size)], [], confirmed=True, permanent=False)
         if res.deleted:
-            QMessageBox.information(self, tr("sto.delete_file"), tr("sto.moved_to_trash", path=path))
+            msg.info(self, tr("sto.delete_file"), tr("sto.moved_to_trash", path=path))
             self.scan_result.largest = [(s, p) for s, p in self.scan_result.largest if p != path]
             self._render_scan()
         else:
             reason = (res.failed or res.skipped or [("", "unknown")])[0][1]
-            QMessageBox.warning(self, tr("sto.delete_file"), tr("sto.delete_failed", reason=reason_text(reason)))
+            msg.warn(self, tr("sto.delete_file"), tr("sto.delete_failed", reason=reason_text(reason)))
 
     # ---- Bereinigung -------------------------------------------------------
     def _build_cleanup(self) -> QWidget:
@@ -571,7 +572,9 @@ class StoragePage(Page):
                 text += "\n\n" + tr("sto.clean_trash_hint")
             if details:
                 text += "\n\n" + tr("sto.clean_not_deleted") + "\n" + details
-            QMessageBox.information(self, tr("sto.clean_title"), text)
+            msg.info(self, tr("sto.clean_title"), text)
+            if res.deleted:
+                self.ctx.activity.add("ok", "act.cleanup", "storage", size=fmt.bytes_(res.deleted_bytes), n=res.deleted)
             self._scan_cleanup()
 
         def failed(exc):

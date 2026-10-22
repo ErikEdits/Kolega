@@ -11,6 +11,7 @@ from corecontrol.core import fmt
 from corecontrol.i18n import tr
 from corecontrol.ui.bus import bind_text, bus, on_refresh
 from corecontrol.ui.pages.base import Page
+from corecontrol.ui.widgets.controls import AnimatedButton
 from corecontrol.ui.widgets.charts import HistoryChart
 from corecontrol.ui.widgets.common import Card, KeyValueGrid, button, label, set_role
 
@@ -36,8 +37,8 @@ class HistoryPage(Page):
     def __init__(self, ctx):
         super().__init__(ctx)
         self.header.add_action(button("nav.settings", None, "settings", lambda: bus.navigate.emit("settings")))
-        self.range = "24h"
-        self.metric = "cpu"
+        self._range = "24h"
+        self._metric = "cpu"
         self.disabled_note = label("hist.disabled", "warn", wrap=True)
         self.body.addWidget(self.disabled_note)
 
@@ -45,11 +46,11 @@ class HistoryPage(Page):
         rr = QHBoxLayout()
         self.range_group = QButtonGroup(self)
         for key, _ in RANGES:
-            b = QPushButton()
+            b = AnimatedButton()
             bind_text(b, f"hist.range.{key}")
             set_role(b, "filter")
             b.setCheckable(True)
-            b.setChecked(key == self.range)
+            b.setChecked(key == self._range)
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.clicked.connect(lambda *_, k=key: self._set_range(k))
             self.range_group.addButton(b)
@@ -59,11 +60,11 @@ class HistoryPage(Page):
         mr = QHBoxLayout()
         self.metric_group = QButtonGroup(self)
         for key, *_ in METRICS:
-            b = QPushButton()
+            b = AnimatedButton()
             bind_text(b, f"hist.metric.{key}")
             set_role(b, "filter")
             b.setCheckable(True)
-            b.setChecked(key == self.metric)
+            b.setChecked(key == self._metric)
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.clicked.connect(lambda *_, k=key: self._set_metric(k))
             self.metric_group.addButton(b)
@@ -83,11 +84,11 @@ class HistoryPage(Page):
         on_refresh(self, self.load)
 
     def _set_range(self, k):
-        self.range = k
+        self._range = k
         self.load()
 
     def _set_metric(self, k):
-        self.metric = k
+        self._metric = k
         self.load()
 
     def on_show(self):
@@ -100,9 +101,9 @@ class HistoryPage(Page):
             self.empty.setText(tr("set.history_unavailable"))
             self.empty.setVisible(True)
             return
-        seconds = dict(RANGES)[self.range]
-        meta = next(m for m in METRICS if m[0] == self.metric)
-        ts, avg, mx = h.query(self.metric, time.time() - seconds)
+        seconds = dict(RANGES)[self._range]
+        meta = next(m for m in METRICS if m[0] == self._metric)
+        ts, avg, mx = h.query(self._metric, time.time() - seconds)
         f = _fmt(meta[2])
         self.chart.set_data(ts, avg, mx, meta[1], f, meta[3])
         vals = [v for v in avg if v is not None]

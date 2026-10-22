@@ -14,6 +14,7 @@ from corecontrol.system.processes import CAUTION, ProcessMonitor, end_process
 from corecontrol.system.tools import run_tool
 from corecontrol.ui.bus import on_refresh
 from corecontrol.ui.dialogs import ConfirmDialog
+from corecontrol.ui import msg
 from corecontrol.ui.pages.base import Page
 from corecontrol.ui.widgets.common import Card, Chip, button, label
 from corecontrol.ui.widgets.table import DataTable
@@ -117,10 +118,10 @@ class ProcessesPage(Page):
     def _end(self):
         r = self._selected()
         if r is None:
-            QMessageBox.information(self, tr("proc.end"), tr("proc.select_first"))
+            msg.info(self, tr("proc.end"), tr("proc.select_first"))
             return
         if r.protected:
-            QMessageBox.warning(self, tr("proc.protected_title"), tr("proc.protected_text", name=r.name))
+            msg.warn(self, tr("proc.protected_title"), tr("proc.protected_text", name=r.name))
             return
         details = tr("proc.confirm_details", name=r.name, pid=r.pid, path=r.exe or tr("common.na"), user=r.user or tr("common.na"),
                      ram=fmt.bytes_(r.mem))
@@ -134,7 +135,8 @@ class ProcessesPage(Page):
         result = end_process(r.pid, r.name, r.create_time, confirmed=True)
         text = tr(f"proc.result.{result}", name=r.name)
         if result in ("terminated", "killed"):
-            QMessageBox.information(self, tr("proc.end"), text)
+            self.ctx.activity.add("info", "act.process_ended", "processes", name=r.name)
+            msg.info(self, tr("proc.end"), text)
         else:
-            QMessageBox.warning(self, tr("proc.end"), text)
+            msg.warn(self, tr("proc.end"), text)
         self.refresh()

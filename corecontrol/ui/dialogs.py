@@ -16,7 +16,9 @@ from PySide6.QtWidgets import (
 )
 
 from corecontrol.i18n import tr
+from corecontrol.ui.anim import fade_window
 from corecontrol.ui.widgets.common import icon_label, set_role
+from corecontrol.ui.widgets.controls import AnimatedButton
 
 
 def show_text_dialog(parent, title: str, text: str, copy: bool = True) -> None:
@@ -29,12 +31,13 @@ def show_text_dialog(parent, title: str, text: str, copy: bool = True) -> None:
     lay.addWidget(edit)
     btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
     if copy:
-        cbtn = QPushButton(tr("common.copy"))
+        cbtn = AnimatedButton(tr("common.copy"))
         cbtn.clicked.connect(lambda: QApplication.clipboard().setText(text))
         btns.addButton(cbtn, QDialogButtonBox.ButtonRole.ActionRole)
     btns.rejected.connect(dlg.reject)
     btns.accepted.connect(dlg.accept)
     lay.addWidget(btns)
+    fade_window(dlg)
     dlg.exec()
 
 
@@ -69,9 +72,9 @@ class ConfirmDialog(QDialog):
             self.check = QCheckBox(require_check)
             lay.addWidget(self.check)
         btns = QDialogButtonBox()
-        self.ok = QPushButton(confirm_text or tr("common.ok"))
+        self.ok = AnimatedButton(confirm_text or tr("common.ok"))
         set_role(self.ok, "danger" if danger else "primary")
-        cancel = QPushButton(tr("common.cancel"))
+        cancel = AnimatedButton(tr("common.cancel"))
         btns.addButton(self.ok, QDialogButtonBox.ButtonRole.AcceptRole)
         btns.addButton(cancel, QDialogButtonBox.ButtonRole.RejectRole)
         btns.accepted.connect(self.accept)
@@ -82,6 +85,7 @@ class ConfirmDialog(QDialog):
         if self.check is not None:
             self.ok.setEnabled(False)
             self.check.toggled.connect(self.ok.setEnabled)
+        fade_window(self)
 
     @staticmethod
     def ask(parent, *args, **kwargs) -> bool:
