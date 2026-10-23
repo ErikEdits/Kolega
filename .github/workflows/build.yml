@@ -6,6 +6,11 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Version veröffentlichen, z. B. 0.1.0 (leer lassen = nur bauen und testen)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -82,12 +87,20 @@ jobs:
           name: Seitenbilder-Windows
           path: shots/
           retention-days: 14
-      - name: Release erstellen (nur bei Versions-Tag v*)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Release erstellen (bei Versions-Tag v* oder manuell mit Versionsnummer)
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_version != '')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v{0}', inputs.release_version) }}
         run: |
+          $code = python -c "import corecontrol; print(corecontrol.__version__)"
+          if ("v$code" -ne $env:TAG) { throw "Versionsnummer $env:TAG passt nicht zur Programmversion $code (corecontrol/__init__.py)" }
           $hash = (Get-FileHash dist\CoreControl.exe -Algorithm SHA256).Hash
           "SHA256: $hash" | Out-File -Encoding utf8 dist\CoreControl.exe.sha256.txt
-          gh release create "${{ github.ref_name }}" dist\CoreControl.exe dist\CoreControl.exe.sha256.txt --title "CoreControl ${{ github.ref_name }}" --notes-file docs/RELEASE_NOTES.md
+          $existing = (gh release list --limit 100 --json tagName | ConvertFrom-Json).tagName
+          if ($existing -contains $env:TAG) {
+            gh release upload $env:TAG dist\CoreControl.exe dist\CoreControl.exe.sha256.txt --clobber
+          } else {
+            gh release create $env:TAG dist\CoreControl.exe dist\CoreControl.exe.sha256.txt --target $env:GITHUB_SHA --title "CoreControl $env:TAG" --notes-file docs/RELEASE_NOTES.md
+          }

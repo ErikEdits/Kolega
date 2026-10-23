@@ -55,7 +55,9 @@ python tools/build_exe.py        # portable EXE bauen (unter Windows) → dist/C
 ```
 
 Bei jedem Push baut GitHub Actions automatisch die EXE auf Windows und führt alle Tests aus
-(`.github/workflows/build.yml`). Ein Tag `v*` erstellt eine Veröffentlichung (Release) mit EXE und SHA256-Prüfsumme.
+(`.github/workflows/build.yml`). Eine Veröffentlichung (Release) mit EXE und SHA256-Prüfsumme entsteht
+durch einen Tag `v*` oder von Hand: **Actions → Test und Windows-Build → Run workflow**, Branch `main`,
+Versionsnummer eintragen (muss zu `corecontrol/__init__.py` passen).
 
 Dokumentation:
 - [Benutzeranleitung](docs/BENUTZERANLEITUNG.md)
