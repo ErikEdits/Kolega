@@ -177,7 +177,7 @@ STRINGS: dict[str, object] = {
     "set.move_down": "Nach unten",
     "set.monitoring": "Messung & Sensoren",
     "set.interval": "Aktualisierungsintervall",
-    "set.interval_desc": "Wie oft Live-Werte gemessen werden, solange das Fenster sichtbar ist.",
+    "set.interval_desc": "Wie oft Live-Werte gemessen werden, solange das Fenster sichtbar ist. Standard 0,5 s; 0,25 s ist am flüssigsten, braucht aber etwas mehr Rechenzeit.",
     "set.bg_interval": "Intervall im Hintergrund",
     "set.bg_interval_desc": "Seltener messen, wenn CoreControl minimiert ist – spart Leistung.",
     "set.lhm": "LibreHardwareMonitor verwenden",

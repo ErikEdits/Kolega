@@ -43,19 +43,30 @@ def _hw():
     print("errors:", hw.get("errors"))
 
 
-@section("Live-Messung (3 Proben)")
+@section("Live-Messung (20 Proben im 0,25-s-Takt, mit Dauer je Messung)")
 def _live():
     from corecontrol.monitoring.collector import Collector
 
+    t0 = time.perf_counter()
     c = Collector(lhm_enabled=True)
-    for _ in range(3):
+    print(f"Start der Messquellen: {(time.perf_counter() - t0) * 1000:.0f} ms")
+    durations = []
+    for _ in range(20):
+        t1 = time.perf_counter()
         s = c.sample()
-        time.sleep(1)
+        durations.append((time.perf_counter() - t1) * 1000)
+        time.sleep(0.25)
+    d = sorted(durations[1:])
+    print(f"Dauer je Messung: min {d[0]:.1f} ms, Median {d[len(d) // 2]:.1f} ms, max {d[-1]:.1f} ms")
     print(f"cpu={s.cpu_percent} freq={s.cpu_freq_mhz} ram={s.ram_percent} disk_active={s.disk_active_pct} "
           f"net_down={s.net_down_bps} procs={s.process_count} lhm={s.lhm_status}")
     for g in s.gpus:
         print("  gpu:", g)
+    t1 = time.perf_counter()
     c.close()
+    print(f"Beenden: {(time.perf_counter() - t1) * 1000:.0f} ms")
+    if d[-1] > 200:
+        raise RuntimeError(f"Eine Messung dauerte {d[-1]:.0f} ms – zu langsam für eine flüssige Live-Anzeige")
 
 
 @section("GPU-Adapter (DXGI)")

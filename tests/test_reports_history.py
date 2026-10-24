@@ -62,7 +62,8 @@ def test_history_store_retention_and_downsampling(tmp_path):
     now = time.time()
     day = 86400
     vals = {m: (10.0, 20.0) for m in METRICS}
-    for ts in (now - 40 * day, now - 10 * day, now - 10 * day + 60, now - 60):
+    hour_start = int(now - 10 * day) // 3600 * 3600  # beide Werte sicher in derselben Stunde
+    for ts in (now - 40 * day, hour_start + 60, hour_start + 120, now - 60):
         st.insert("minute", int(ts) // 60 * 60, vals)
     st.purge(retention_days=30, now=now)
     s = st.stats()

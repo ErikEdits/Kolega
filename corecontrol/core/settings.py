@@ -19,7 +19,7 @@ from typing import Any, Callable
 
 log = logging.getLogger(__name__)
 
-SETTINGS_VERSION = 1
+SETTINGS_VERSION = 2
 
 TILE_IDS = ("cpu", "gpu", "ram", "storage", "load", "temps", "fans", "actions", "events", "network", "diagnosis", "system")
 DEFAULT_TILES = ["cpu", "gpu", "ram", "storage", "load", "temps", "fans", "actions", "events", "network"]
@@ -96,7 +96,7 @@ SCHEMA: dict[str, Field] = {
     # Dashboard
     "dashboard.tiles": Field(list(DEFAULT_TILES), list, validator=_valid_tiles),
     # Messung
-    "monitor.interval_ms": Field(1000, int, min=250, max=10000),
+    "monitor.interval_ms": Field(500, int, min=250, max=10000),
     "monitor.background_interval_ms": Field(5000, int, min=1000, max=60000),
     "sensors.lhm_enabled": Field(True, bool),
     "sensors.lhm_port": Field(8085, int, min=1, max=65535),
@@ -199,12 +199,22 @@ def validate_value(key: str, value: Any) -> tuple[Any, str | None]:
     return f.default, f"invalid:{key}"
 
 
+def _migrate(data: dict[str, Any], version: Any) -> dict[str, Any]:
+    """Passt Dateien älterer Versionen an. Nur unveränderte alte Standardwerte werden ersetzt."""
+    if not isinstance(version, int) or version < 2:
+        # Version 2: Live-Messung standardmäßig alle 0,5 s statt 1 s
+        if data.get("monitor.interval_ms") == 1000:
+            data = dict(data, **{"monitor.interval_ms": SCHEMA["monitor.interval_ms"].default})
+    return data
+
+
 def validate_dict(raw: Any) -> LoadResult:
     result = LoadResult(defaults())
     if not isinstance(raw, dict):
         result.warnings.append("invalid:file")
         return result
     data = raw.get("values", raw) if isinstance(raw.get("values"), dict) else raw
+    data = _migrate(data, raw.get("version"))
     for key, value in data.items():
         if key in ("version", "values"):
             continue

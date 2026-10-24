@@ -16,9 +16,9 @@ log = logging.getLogger(__name__)
 
 
 class LiveStore:
-    """Thread-sicherer Ringpuffer der letzten Messungen (Standard: 10 Minuten bei 1 s)."""
+    """Thread-sicherer Ringpuffer der letzten Messungen (Standard: 10 Minuten bei 0,5 s)."""
 
-    def __init__(self, maxlen: int = 600):
+    def __init__(self, maxlen: int = 1200):
         self._buf: deque[Sample] = deque(maxlen=maxlen)
         self._lock = threading.Lock()
 
@@ -61,6 +61,7 @@ class _Worker(QObject):
             log.exception("Messung konnte nicht gestartet werden")
             return
         self.timer = QTimer()
+        self.timer.setTimerType(Qt.TimerType.PreciseTimer)  # gleichmäßiger Takt auch bei 0,25–0,5 s
         self.timer.timeout.connect(self.tick)
         self.timer.start(self.interval_ms)
         self.tick()
@@ -108,7 +109,7 @@ class Sampler(QObject):
     _set_lhm = Signal(bool, int)
     _stop = Signal()
 
-    def __init__(self, interval_ms: int = 1000, lhm_enabled: bool = True, lhm_port: int = 8085):
+    def __init__(self, interval_ms: int = 500, lhm_enabled: bool = True, lhm_port: int = 8085):
         super().__init__()
         self.store = LiveStore()
         self.thread = QThread()

@@ -202,7 +202,7 @@ class NetworkCard(Card):
         best = net.best_internet if net is not None else None
         self.vals["ping"].setText(fmt.ms(best.avg) if best is not None and best.avg is not None else tr("dash.net.not_tested"))
         self.vals["loss"].setText(fmt.pct(best.loss_pct) if best is not None and best.loss_pct is not None else "–")
-        self.spark.push(s.net_down_bps)
+        self.spark.push(s.net_down_bps, ts=s.ts)
 
     def _connection(self) -> tuple[str, str]:
         from corecontrol.network.tests import _kind
@@ -441,6 +441,10 @@ class DashboardPage(Page):
     # ---- Anzeigen ------------------------------------------------------------
     def on_show(self) -> None:
         if self.ctx.sampler:
+            for t in self.tiles.values():
+                for w in (getattr(t, "spark", None), getattr(t, "chart", None)):
+                    if w is not None:
+                        w.clear()
             hist = self.ctx.sampler.store.window(120)
             for s in hist[:-1]:
                 self._push_series(s, animate=False)
@@ -456,17 +460,18 @@ class DashboardPage(Page):
         g = s.primary_gpu
         tiles = self.tiles
         if "cpu" in tiles:
-            tiles["cpu"].spark.push(s.cpu_percent, animate)
+            tiles["cpu"].spark.push(s.cpu_percent, animate, ts=s.ts)
         if "gpu" in tiles:
-            tiles["gpu"].spark.push(g.util if g else None, animate)
+            tiles["gpu"].spark.push(g.util if g else None, animate, ts=s.ts)
         if "ram" in tiles:
-            tiles["ram"].spark.push(s.ram_percent, animate)
+            tiles["ram"].spark.push(s.ram_percent, animate, ts=s.ts)
         if "storage" in tiles:
-            tiles["storage"].spark.push((s.disk_read_bps or 0) + (s.disk_write_bps or 0) if s.disk_read_bps is not None else None, animate)
+            tiles["storage"].spark.push((s.disk_read_bps or 0) + (s.disk_write_bps or 0) if s.disk_read_bps is not None else None,
+                                        animate, ts=s.ts)
         if "load" in tiles:
             tiles["load"].chart.push(s.cpu_percent, g.util if g else None, s.ram_percent, ts=s.ts, animate=animate)
         if "network" in tiles and not animate:
-            tiles["network"].spark.push(s.net_down_bps, False)
+            tiles["network"].spark.push(s.net_down_bps, False, ts=s.ts)
 
     def on_sample(self, s) -> None:
         st = self.ctx.settings

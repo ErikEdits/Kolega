@@ -19,8 +19,47 @@ from corecontrol.ui.theme import theme
 class Series:
     name: str
     color: str  # Farbrolle (z. B. "accent") oder Hex-Wert
-    values: deque = field(default_factory=lambda: deque(maxlen=120))
+    values: deque = field(default_factory=deque)
     fill: bool = True
+
+
+# Größere Lücken zwischen zwei Messungen (z. B. Ruhezustand) werden nicht als Linie verbunden.
+GAP_S = 15.0
+_NICE_STEPS = (1, 2, 5, 10, 15, 20, 30, 60, 120, 300, 600, 900, 1800, 3600)
+
+
+def time_ticks(t_end: float, window_s: float, width_px: float, min_gap_px: float) -> list[tuple[float, float]]:
+    """Uhrzeit-Markierungen auf runden Zeitpunkten, mindestens min_gap_px auseinander.
+
+    Gibt (Zeitpunkt, Anteil 0..1 von links) zurück.
+    """
+    if width_px <= 0 or window_s <= 0:
+        return []
+    px_per_s = width_px / window_s
+    step = next((st for st in _NICE_STEPS if st * px_per_s >= min_gap_px), None)
+    if step is None:
+        return []
+    t0 = t_end - window_s
+    out = []
+    t = math.ceil(t0 / step) * step
+    while t <= t_end + 1e-6:
+        out.append((t, (t - t0) / window_s))
+        t += step
+    return out
+
+
+def _segments(times, values, x_of, y_of) -> list[list[QPointF]]:
+    """Punkte als zusammenhängende Linienstücke; fehlende Werte und große Lücken trennen."""
+    segments: list[list[QPointF]] = [[]]
+    last_t = None
+    for t, v in zip(times, values):
+        if v is None or (last_t is not None and t - last_t > GAP_S):
+            if segments[-1]:
+                segments.append([])
+        if v is not None:
+            segments[-1].append(QPointF(x_of(t), y_of(v)))
+        last_t = t
+    return [seg for seg in segments if len(seg) >= 2]
 
 
 def _start_slide(widget, animate: bool) -> None:
@@ -41,14 +80,64 @@ def _resolve(color: str) -> QColor:
     return QColor(theme.palette.color(color))
 
 
-class LineChart(QWidget):
-    """Live-Liniendiagramm mit Raster, Achsenbeschriftung und Legende."""
+class _TimeWindow:
+    """Gemeinsame Logik: Messpunkte mit Zeitstempel über ein festes Zeitfenster.
 
-    def __init__(self, points: int = 60, y_max: float | None = 100.0, unit: str = "%",
+    Die x-Position ergibt sich aus der Uhrzeit, nicht aus der Anzahl der Punkte. So
+    stimmt die Zeitachse bei jedem Messtakt (0,25 s bis 10 s) und auch dann, wenn im
+    Hintergrund seltener gemessen wurde. Neue Werte gleiten von rechts herein.
+    """
+
+    window_s: float
+    times: deque
+    _phase = 1.0
+    _dur = 0.4
+    _prev_end: float | None = None
+
+    def _append_time(self, ts: float | None) -> float:
+        import time as _t
+
+        now = ts if ts is not None else _t.time()
+        if self.times and now < self.times[-1]:
+            self.clear()  # Uhr wurde zurückgestellt
+        if self.times:
+            self._dur = max(0.15, min(0.45, (now - self.times[-1]) * 0.6))
+            self._prev_end = self.times[-1]
+        else:
+            self._prev_end = None
+        self.times.append(now)
+        return now
+
+    def _prune(self, now: float, columns: list[deque]) -> None:
+        # Ein Punkt vor dem Fensteranfang bleibt, damit die Linie bis zum linken Rand reicht.
+        limit = now - self.window_s
+        while len(self.times) >= 2 and self.times[1] <= limit:
+            self.times.popleft()
+            for col in columns:
+                col.popleft()
+
+    def _view_end(self) -> float:
+        """Rechter Rand des sichtbaren Fensters (gleitet beim Einschieben mit)."""
+        end = self.times[-1]
+        if self._prev_end is None or self._phase >= 1.0:
+            return end
+        ease = 1 - (1 - self._phase) ** 3
+        return self._prev_end + (end - self._prev_end) * ease
+
+    def _tick(self, dt: float) -> bool:
+        self._phase = min(1.0, self._phase + dt / self._dur)
+        self.update()
+        return self._phase < 1.0
+
+
+class LineChart(_TimeWindow, QWidget):
+    """Live-Liniendiagramm mit Raster, Achsenbeschriftung und Legende über window_s Sekunden."""
+
+    def __init__(self, window_s: float = 60, y_max: float | None = 100.0, unit: str = "%",
                  value_fmt: Callable[[float], str] | None = None, show_legend: bool = True,
                  show_axes: bool = True, min_height: int = 150, time_axis: bool = False, legend_right: bool = False):
         super().__init__()
-        self.points = points
+        self.window_s = float(window_s)
         self.y_max = y_max
         self.unit = unit
         self.value_fmt = value_fmt or (lambda v: f"{v:.0f}{unit}")
@@ -57,39 +146,29 @@ class LineChart(QWidget):
         self.show_axes = show_axes
         self.time_axis = time_axis
         self.legend_right = legend_right
-        self.times: deque = deque(maxlen=points)
-        self._phase = 1.0
-        self._dur = 0.4
+        self.times: deque = deque()
         self.setMinimumHeight(min_height)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         theme.changed.connect(self.update)
 
     def add_series(self, name: str, color: str, fill: bool = True) -> Series:
-        s = Series(name, color, deque(maxlen=self.points), fill)
+        s = Series(name, color, deque([None] * len(self.times)), fill)
         self.series.append(s)
         return s
 
     def push(self, *values: float | None, ts: float | None = None, animate: bool = True) -> None:
-        import time as _t
-
-        now = ts if ts is not None else _t.time()
-        if self.times:
-            self._dur = max(0.15, min(0.45, (now - self.times[-1]) * 0.6))
-        self.times.append(now)
-        for s, v in zip(self.series, values):
-            s.values.append(v)
+        now = self._append_time(ts)
+        for i, s in enumerate(self.series):
+            s.values.append(values[i] if i < len(values) else None)
+        self._prune(now, [s.values for s in self.series])
         _start_slide(self, animate)
 
     def clear(self) -> None:
         for s in self.series:
             s.values.clear()
         self.times.clear()
+        self._prev_end = None
         self.update()
-
-    def _tick(self, dt: float) -> bool:
-        self._phase = min(1.0, self._phase + dt / self._dur)
-        self.update()
-        return self._phase < 1.0
 
     def _ymax(self) -> float:
         if self.y_max is not None:
@@ -131,31 +210,21 @@ class LineChart(QWidget):
                 val = ymax * (4 - i) / 4
                 qp.drawText(QRectF(0, y - 8, left - 8, 16), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                             self.value_fmt(val))
+        view_end = self._view_end() if self.times else 0.0
+
+        def x_of(t: float) -> float:
+            return plot.right() - (view_end - t) / self.window_s * plot.width()
+
+        def y_of(v: float) -> float:
+            return plot.bottom() - plot.height() * min(max(v, 0.0), ymax) / ymax
+
         # Linien (neue Werte gleiten von rechts herein)
-        ease = 1 - (1 - self._phase) ** 3
-        step = plot.width() / max(1, self.points - 1)
-        shift = (1 - ease) * step
         qp.save()
         qp.setClipRect(plot.adjusted(0, -4, 0, 4))
+        times = list(self.times)
         for s in self.series:
             col = _resolve(s.color)
-            n = self.points
-            vals = list(s.values)
-            if len(vals) >= 2 and vals[-1] is not None and vals[-2] is not None and ease < 1:
-                vals[-1] = vals[-2] + (vals[-1] - vals[-2]) * ease
-            offset = n - len(vals)
-            segments: list[list[QPointF]] = [[]]
-            for i, v in enumerate(vals):
-                if v is None:
-                    if segments[-1]:
-                        segments.append([])
-                    continue
-                x = plot.left() + plot.width() * (offset + i) / max(1, n - 1) + shift
-                y = plot.bottom() - plot.height() * min(max(v, 0.0), ymax) / ymax
-                segments[-1].append(QPointF(x, y))
-            for pts in segments:
-                if len(pts) < 2:
-                    continue
+            for pts in _segments(times, s.values, x_of, y_of):
                 path = QPainterPath(pts[0])
                 for pt in pts[1:]:
                     path.lineTo(pt)
@@ -178,30 +247,24 @@ class LineChart(QWidget):
                 qp.setPen(pen)
                 qp.drawPath(path)
         qp.restore()
-        # Zeitachse
-        if self.time_axis and len(self.times) >= 2:
-            from datetime import datetime as _dt
-
+        # Zeitachse: runde Uhrzeiten, die mit den Werten mitlaufen und sich nie überlappen
+        if self.time_axis and times:
             qp.setFont(QFont(theme.font_family, 8))
             qp.setPen(QColor(p.text3))
-            n = self.points
-            times = list(self.times)
-            interval = (times[-1] - times[0]) / max(1, len(times) - 1)
             fm = qp.fontMetrics()
-            span_s = interval * (n - 1)
-            fmt_s = "%H:%M" if span_s >= 240 else "%H:%M:%S"
-            label_w = fm.horizontalAdvance("00:00:00") + 16
-            ticks = max(2, min(7, int(plot.width() // label_w)))
-            for k in range(ticks + 1):
-                frac = k / ticks
-                x = plot.left() + plot.width() * frac
-                t_at = times[-1] - (1 - frac) * span_s
-                if t_at < times[0] - interval * 0.5:
+            tw = fm.horizontalAdvance("00:00:00")
+            ticks = time_ticks(view_end, self.window_s, plot.width(), tw + 18)
+            fmt_s = "%H:%M:%S"
+            if len(ticks) >= 2 and ticks[1][0] - ticks[0][0] >= 60:
+                fmt_s = "%H:%M"
+            for t, frac in ticks:
+                if t < times[0]:
                     continue  # für diesen Zeitpunkt gibt es noch keine Messwerte
-                txt = _dt.fromtimestamp(t_at).strftime(fmt_s)
-                align = Qt.AlignmentFlag.AlignLeft if k == 0 else Qt.AlignmentFlag.AlignRight if k == ticks else Qt.AlignmentFlag.AlignHCenter
-                rx = x if k == 0 else x - label_w if k == ticks else x - label_w / 2
-                qp.drawText(QRectF(rx, plot.bottom() + 4, label_w, 16), align, txt)
+                x = plot.left() + plot.width() * frac
+                rect = QRectF(x - tw / 2 - 4, plot.bottom() + 4, tw + 8, 16)
+                if rect.left() < 0 or rect.right() > w:
+                    continue
+                qp.drawText(rect, Qt.AlignmentFlag.AlignHCenter, datetime.fromtimestamp(t).strftime(fmt_s))
         # Legende
         if self.show_legend and self.legend_right:
             lf = QFont(theme.font_family, 9)
@@ -234,59 +297,49 @@ class LineChart(QWidget):
         qp.end()
 
 
-class Sparkline(QWidget):
-    def __init__(self, color: str = "accent", points: int = 60, y_max: float | None = 100.0, height: int = 38,
+class Sparkline(_TimeWindow, QWidget):
+    """Kleine Verlaufslinie ohne Achsen über window_s Sekunden."""
+
+    def __init__(self, color: str = "accent", window_s: float = 60, y_max: float | None = 100.0, height: int = 38,
                  max_height: int = 96):
         super().__init__()
         self.color = color
-        self.values: deque = deque(maxlen=points)
-        self.points = points
+        self.window_s = float(window_s)
+        self.times: deque = deque()
+        self.values: deque = deque()
         self.y_max = y_max
         self.setMinimumHeight(height)
         self.setMaximumHeight(max(height, max_height))
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         theme.changed.connect(self.update)
 
-    _phase = 1.0
-    _dur = 0.4
-
-    def push(self, v: float | None, animate: bool = True) -> None:
+    def push(self, v: float | None, animate: bool = True, ts: float | None = None) -> None:
+        now = self._append_time(ts)
         self.values.append(v)
+        self._prune(now, [self.values])
         _start_slide(self, animate)
 
-    def _tick(self, dt: float) -> bool:
-        self._phase = min(1.0, self._phase + dt / self._dur)
+    def clear(self) -> None:
+        self.values.clear()
+        self.times.clear()
+        self._prev_end = None
         self.update()
-        return self._phase < 1.0
 
     def paintEvent(self, _):
-        vals = [v for v in self.values]
-        if sum(1 for v in vals if v is not None) < 2:
+        if sum(1 for v in self.values if v is not None) < 2:
             return
         qp = QPainter(self)
         qp.setRenderHint(QPainter.RenderHint.Antialiasing)
         col = _resolve(self.color)
         w, h = self.width(), self.height() - 2
-        ymax = self.y_max or max((v for v in vals if v is not None), default=1) or 1
-        offset = self.points - len(vals)
-        ease = 1 - (1 - self._phase) ** 3
-        shift = (1 - ease) * w / max(1, self.points - 1)
-        if len(vals) >= 2 and vals[-1] is not None and vals[-2] is not None and ease < 1:
-            vals[-1] = vals[-2] + (vals[-1] - vals[-2]) * ease
-        pts = []
-        for i, v in enumerate(vals):
-            if v is None:
-                continue
-            x = w * (offset + i) / max(1, self.points - 1) + shift
-            y = 1 + h - h * min(max(v, 0), ymax) / ymax
-            pts.append(QPointF(x, y))
-        path = QPainterPath(pts[0])
-        for pt in pts[1:]:
-            path.lineTo(pt)
-        fill = QPainterPath(path)
-        fill.lineTo(pts[-1].x(), h + 1)
-        fill.lineTo(pts[0].x(), h + 1)
-        fill.closeSubpath()
+        ymax = self.y_max or max((v for v in self.values if v is not None), default=1) or 1
+        view_end = self._view_end()
+        segments = _segments(list(self.times), self.values,
+                             lambda t: w - (view_end - t) / self.window_s * w,
+                             lambda v: 1 + h - h * min(max(v, 0), ymax) / ymax)
+        qp.setClipRect(QRectF(0, 0, w, h + 2))
+        pen = QPen(col)
+        pen.setWidthF(1.8)
         grad = QLinearGradient(0, 0, 0, h)
         c1 = QColor(col)
         c1.setAlphaF(0.28)
@@ -294,11 +347,17 @@ class Sparkline(QWidget):
         c2.setAlphaF(0.0)
         grad.setColorAt(0, c1)
         grad.setColorAt(1, c2)
-        qp.fillPath(fill, grad)
-        pen = QPen(col)
-        pen.setWidthF(1.8)
-        qp.setPen(pen)
-        qp.drawPath(path)
+        for pts in segments:
+            path = QPainterPath(pts[0])
+            for pt in pts[1:]:
+                path.lineTo(pt)
+            fill = QPainterPath(path)
+            fill.lineTo(pts[-1].x(), h + 1)
+            fill.lineTo(pts[0].x(), h + 1)
+            fill.closeSubpath()
+            qp.fillPath(fill, grad)
+            qp.setPen(pen)
+            qp.drawPath(path)
         qp.end()
 
 

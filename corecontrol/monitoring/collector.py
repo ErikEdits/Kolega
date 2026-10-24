@@ -4,6 +4,7 @@ fällt eine aus, bleiben ihre Werte „nicht verfügbar“, der Rest läuft weit
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 import psutil
@@ -13,6 +14,66 @@ from corecontrol.monitoring import lhm
 from corecontrol.monitoring.models import GpuSample, Sample
 
 log = logging.getLogger(__name__)
+
+
+class LhmPoller:
+    """Liest LibreHardwareMonitor in einem eigenen Thread.
+
+    Eine langsame oder fehlende Verbindung hält die Live-Messung dadurch nie auf
+    (unter Windows dauert schon der Versuch, einen geschlossenen lokalen Port zu
+    erreichen, bis zu ~1 s). Gelesen wird nur, wenn die Messung nach Werten fragt:
+    höchstens jede Sekunde, solange LibreHardwareMonitor antwortet, sonst alle 10 s.
+    """
+
+    OK_EVERY = 1.0
+    RETRY_EVERY = 10.0
+
+    def __init__(self, port: int, reader=None):
+        self.port = port
+        self._reader = reader if reader is not None else lhm.LhmReader(port)
+        self._lock = threading.Lock()
+        self._latest: tuple[str, list] = ("not_running", [])
+        self._read_at = float("-inf")
+        self._busy = False
+        self._stop = False
+        self._wake = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="lhm-poller", daemon=True)
+        self._thread.start()
+
+    def latest(self) -> tuple[str, list]:
+        """Letztes Ergebnis sofort zurückgeben; bei Bedarf im Hintergrund neu lesen."""
+        with self._lock:
+            res = self._latest
+            due = time.monotonic() - self._read_at >= (self.OK_EVERY if res[0] == "ok" else self.RETRY_EVERY)
+            if due and not self._busy:
+                self._busy = True
+                self._wake.set()
+        return res
+
+    def retry_now(self) -> None:
+        with self._lock:
+            self._read_at = float("-inf")
+
+    def _run(self) -> None:
+        while True:
+            self._wake.wait()
+            self._wake.clear()
+            if self._stop:
+                return
+            try:
+                res = self._reader.read()
+            except Exception as exc:
+                log.debug("LibreHardwareMonitor: %s", exc)
+                res = ("not_running", [])
+            with self._lock:
+                self._latest = res
+                self._read_at = time.monotonic()
+                self._busy = False
+
+    def close(self) -> None:
+        self._stop = True
+        self._wake.set()
+        self._thread.join(timeout=1.5)
 
 
 class Collector:
@@ -25,10 +86,8 @@ class Collector:
         self._nvml = None
         self._base_mhz: float | None = None
         self.lhm_enabled = lhm_enabled
-        self._lhm = lhm.LhmReader(lhm_port)
-        self._lhm_every = 2  # nur jede 2. Messung, um die Last gering zu halten
-        self._tick = 0
-        self._last_lhm: tuple[str, list] = ("off", [])
+        self._lhm_port = lhm_port
+        self._lhm: LhmPoller | None = LhmPoller(lhm_port) if lhm_enabled else None
         self._errors: dict[str, int] = {}
         self._init_sources()
 
@@ -74,10 +133,14 @@ class Collector:
 
     def set_lhm(self, enabled: bool, port: int) -> None:
         self.lhm_enabled = enabled
-        if port != self._lhm.port:
-            self._lhm = lhm.LhmReader(port)
-        if not enabled:
-            self._last_lhm = ("off", [])
+        if self._lhm is not None and (not enabled or port != self._lhm.port):
+            self._lhm.close()
+            self._lhm = None
+        if enabled and self._lhm is None:
+            self._lhm = LhmPoller(port)
+        elif self._lhm is not None:
+            self._lhm.retry_now()
+        self._lhm_port = port
 
     # ---------------------------------------------------------------------
     def _guard(self, name: str, fn) -> None:
@@ -94,7 +157,6 @@ class Collector:
         s = Sample(ts=now)
         dt = (now - self._last_ts) if self._last_ts else None
         self._last_ts = now
-        self._tick += 1
 
         def cpu():
             s.cpu_percent = float(psutil.cpu_percent(None))
@@ -138,11 +200,10 @@ class Collector:
             self._guard("cpufreq", lambda: self._cpu_freq_generic(s))
         if self._nvml is not None:
             self._guard("nvml", lambda: self._sample_nvml(s))
-        if self.lhm_enabled:
-            if self._tick % self._lhm_every == 1 or self._lhm_every == 1:
-                self._guard("lhm", lambda: self._sample_lhm())
-            s.lhm_status, s.sensors = self._last_lhm[0], list(self._last_lhm[1])
-            self._apply_lhm(s)
+        if self.lhm_enabled and self._lhm is not None:
+            status, sensors = self._lhm.latest()
+            s.lhm_status, s.sensors = status, list(sensors)
+            self._guard("lhm", lambda: self._apply_lhm(s))
         else:
             s.lhm_status = "off"
         return s
@@ -198,9 +259,6 @@ class Collector:
                 target.vram_used, target.vram_total = vals["vram_used"], vals["vram_total"]
             target.source = "nvml"
 
-    def _sample_lhm(self) -> None:
-        self._last_lhm = self._lhm.read()
-
     def _apply_lhm(self, s: Sample) -> None:
         if not s.sensors:
             return
@@ -216,6 +274,9 @@ class Collector:
                 s.gpus.append(GpuSample(name=gpu_hw, key="lhm", temp=t, source="lhm"))
 
     def close(self) -> None:
+        if self._lhm is not None:
+            self._lhm.close()
+            self._lhm = None
         if self._pdh:
             self._pdh.close()
         if self._nvml:

@@ -6,7 +6,7 @@ CoreControl prüft deinen PC, zeigt Live-Werte und erklärt gefundene Probleme i
 Was wurde erkannt, wie wichtig ist es, was könnte die Ursache sein, was kannst du tun und welche
 Risiken hat eine Lösung. CoreControl ändert nichts ohne deine ausdrückliche Bestätigung.
 
-> Status: **Version 0.1.0 (erste Testversion)**. Getestet automatisch auf Windows Server (GitHub) und
+> Status: **Version 0.1.1 (Testversion)**. Getestet automatisch auf Windows Server (GitHub) und
 > Linux, noch **nicht auf echten Windows-10/11-PCs mit unterschiedlicher Hardware**. Siehe
 > [Testbericht](docs/TESTBERICHT.md).
 
@@ -16,7 +16,7 @@ Risiken hat eine Lösung. CoreControl ändert nichts ohne deine ausdrückliche B
 |---|---|
 | **Systemdiagnose** (Hauptfunktion) | Regelbasierte Prüfung von Temperaturen, Auslastung, Arbeitsspeicher, Speicherplatz, Laufwerkszustand, Windows-Fehlerprotokollen (Bluescreens, unerwartete Neustarts, Hardware- und Laufwerksfehler, Grafiktreiber-Abstürze), Geräten mit Problemen, Treiberalter, Windows-Version, Autostart, Netzwerk. Jeder Befund mit Ursachen, Empfehlungen, Risiken und Angabe, wie sicher die Diagnose ist. |
 | **Dashboard** | CPU, GPU, RAM, Speicher mit Ringanzeigen, Auslastungsdiagramm, Temperaturen, Lüfter, Schnellaktionen, letzte Ereignisse, Netzwerk. Kacheln ein-/ausblendbar und sortierbar. |
-| **Live-Monitoring** | Diagramme für CPU, RAM, GPU, Temperaturen, Datenträger, Netzwerk (ca. 1×/Sekunde, einstellbar), Tabelle aller Sensoren. |
+| **Live-Monitoring** | Diagramme für CPU, RAM, GPU, Temperaturen, Datenträger, Netzwerk (2×/Sekunde, einstellbar von 0,25 s bis 10 s), Tabelle aller Sensoren. |
 | **Hardware & Treiber** | Windows-Version, CPU, Mainboard, BIOS, RAM-Riegel, Grafikkarten mit Treiberversion/-datum, Laufwerke mit Zustand, Treiberliste, Links zu offiziellen Treiberseiten. |
 | **Fehlerprotokolle** | Windows-Ereignisse verständlich gruppiert und erklärt. |
 | **Verlauf** | Diagramme über Stunden, Tage, Wochen (Minuten-/Stundenmittel, Aufbewahrung einstellbar). |
