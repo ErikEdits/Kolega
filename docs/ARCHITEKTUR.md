@@ -8,6 +8,7 @@
 | Oberfläche | PySide6 (Qt 6 Widgets, LGPL) | Native, schnelle Desktop-Oberfläche, eigene Zeichen-Effekte möglich, kein Browser-Unterbau |
 | Systemwerte | psutil, Windows-APIs über ctypes (PDH, DXGI, ICMP, Shell), WMI über pywin32 | Keine Treiber nötig, keine Adminrechte für die meisten Werte |
 | NVIDIA-GPU | nvidia-ml-py (NVML aus dem Grafiktreiber) | Offizielle Schnittstelle, liefert Temperatur/Takt/Leistung ohne Zusatzprogramm |
+| AMD-GPU | AMD Display Library (`atiadlxx.dll` aus dem Grafiktreiber) über ctypes, `monitoring/amd.py` | Dieselben Treiberwerte wie AMD Adrenalin; kein Zusatzprogramm |
 | CPU-Temperatur, Lüfter | LibreHardwareMonitor (läuft separat, MPL 2.0) | Eigener Kernel-Treiber wäre ein Sicherheitsrisiko und nicht kostenlos signierbar |
 | Papierkorb | Send2Trash | Verlässliches Verschieben in den Windows-Papierkorb |
 | Symbole | Lucide (ISC-Lizenz) | Einheitliche, freie Symbole |
@@ -72,6 +73,9 @@ gelöscht. Nach dem Schreiben wird nachgelesen, ob die Änderung angekommen ist.
 | Entscheidung | Grund |
 |---|---|
 | Temperaturen über LibreHardwareMonitor statt eigenem Treiber | Ein Kernel-Treiber braucht Adminrechte und eine Signatur; bekannte freie Treiber (WinRing0) gelten als Sicherheitslücke. |
+| AMD-Werte über ADL, nicht über ADLX | ADLX ist AMDs neuere Schnittstelle, ihre Lizenz schließt aber Open-Source-Programme unter GPL aus. ADL-Header stehen unter MIT; CoreControl bildet nur Funktionsnamen, Strukturen und Sensornummern nach und ruft den installierten Treiber auf. AMD hat die Sensorabfrage `ADL2_New_QueryPMLogData_Get` als veraltet markiert; sie wird genutzt, solange der Treiber sie anbietet. |
+| Absturzschutz für Treiberaufrufe | Aufrufe in Treiber-DLLs können bei Fehlern das Programm beenden. Vor dem ersten AMD-Zugriff wird eine Markierungsdatei angelegt und danach gelöscht; bleibt sie nach einem Absturz liegen, lässt der nächste Start die AMD-Werte aus, bis der Schalter in den Einstellungen aus- und wieder eingeschaltet wird. |
+| CPU-Temperatur nicht aus Adrenalin | AMD gibt sie über keine öffentliche Schnittstelle an andere Programme weiter (auch nicht über ADLX). Weiterhin über LibreHardwareMonitor. |
 | Kein Speedtest | Kostenlose, verlässliche Messserver ohne Nutzungsbedingungs-Probleme gibt es nicht. Der Netzwerktest misst Erreichbarkeit, Paketverlust, Schwankung, DNS. |
 | Keine FPS-Anzeige | Braucht PresentMon (Intel, MIT-Lizenz) als Zusatzprogramm mit Adminrechten. Möglicher nächster Schritt. |
 | Keine automatische Treiber-Installation | Laut Auftrag; nur Links zu offiziellen Herstellerseiten. |

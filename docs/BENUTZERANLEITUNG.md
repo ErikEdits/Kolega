@@ -44,8 +44,10 @@ Programm **LibreHardwareMonitor** mit, statt selbst einen Treiber zu installiere
    Falls dort „nicht gefunden“ steht: in LibreHardwareMonitor *Options → Remote Web Server → Run* aktivieren
    (Port 8085).
 
-Ohne LibreHardwareMonitor steht bei Temperaturen und Lüftern **„Nicht verfügbar“**. Grafikkarten-Temperaturen von
-NVIDIA-Karten funktionieren auch ohne.
+Ohne LibreHardwareMonitor steht bei Temperaturen und Lüftern **„Nicht verfügbar“**. Grafikkarten-Werte
+(Temperatur, Hotspot, Leistung, Takt, Lüfter) kommen bei **NVIDIA- und AMD-Karten direkt aus dem Grafiktreiber** –
+bei AMD dieselben Werte wie in AMD Adrenalin (Einstellungen → Messung & Sensoren → „AMD-Grafiktreiber auslesen“).
+Die CPU-Temperatur stellt AMD anderen Programmen nicht zur Verfügung; dafür bleibt LibreHardwareMonitor nötig.
 
 ## 4. Die Bereiche
 

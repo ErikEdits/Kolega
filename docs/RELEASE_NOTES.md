@@ -1,4 +1,4 @@
-## CoreControl 0.1.1 – schnellere Live-Anzeige
+## CoreControl 0.1.2 – Grafikkarten-Werte direkt aus dem AMD-Treiber
 
 **Herunterladen:** `CoreControl.exe` unten bei *Assets*. Keine Installation nötig.
 Windows SmartScreen warnt beim ersten Start, weil die EXE nicht signiert ist:
@@ -6,6 +6,15 @@ Windows SmartScreen warnt beim ersten Start, weil die EXE nicht signiert ist:
 
 **Prüfsumme:** `CoreControl.exe.sha256.txt` enthält den SHA256-Wert. Prüfen in PowerShell:
 `Get-FileHash .\CoreControl.exe -Algorithm SHA256`
+
+### Neu in 0.1.2
+- AMD-Grafikkarten: Auslastung, GPU-Temperatur, Hotspot, Speichertemperatur, Platinenleistung, Takt, Speichertakt,
+  Lüfter und belegter Grafikspeicher kommen direkt aus dem AMD-Treiber – dieselben Werte wie in AMD Adrenalin.
+  Ein- und ausschaltbar unter Einstellungen → Messung & Sensoren.
+- Absturzschutz: Sollte ein Treiberaufruf CoreControl beenden, lässt der nächste Start die AMD-Werte automatisch aus.
+- Monitoring zeigt die Datenquelle verständlich an (z. B. „AMD-Treiber“).
+- Hinweis: Die CPU-Temperatur gibt AMD nicht an andere Programme weiter; dafür bleibt LibreHardwareMonitor nötig.
+- Noch nicht auf echter AMD-Hardware getestet – bitte Rückmeldung, ob die Werte zu Adrenalin passen.
 
 ### Neu in 0.1.1
 - Live-Werte werden 2× pro Sekunde gemessen statt 1×. Noch schneller: Einstellungen → Messung & Sensoren →

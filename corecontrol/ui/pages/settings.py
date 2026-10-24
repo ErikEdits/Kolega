@@ -248,6 +248,10 @@ class SettingsPage(Page):
         card.add(SettingRow("set.bg_interval", "set.bg_interval_desc",
                             self._seconds("monitor.background_interval_ms", 1, 60), "timer"))
         card.add(separator())
+        card.add(SettingRow("set.amd", "set.amd_desc", self._toggle("sensors.amd_enabled"), "monitor"))
+        self.amd_status = label(None, "faint", text="", wrap=True)
+        card.add(self.amd_status)
+        card.add(separator())
         card.add(SettingRow("set.lhm", "set.lhm_desc", self._toggle("sensors.lhm_enabled"), "thermometer"))
         card.add(SettingRow("set.lhm_port", "set.lhm_port_desc", self._spin("sensors.lhm_port", 1, 65535), "plug"))
         self.lhm_status = label(None, "faint", text="", wrap=True)
@@ -262,6 +266,15 @@ class SettingsPage(Page):
         key = {"ok": "set.lhm_status_ok", "not_running": "set.lhm_status_off", "off": "set.lhm_status_disabled"}.get(
             s.lhm_status, "set.lhm_status_off")
         self.lhm_status.setText(tr(key, n=len(s.sensors)))
+        adl = next((g for g in s.gpus if g.source == "adl"), None)
+        if adl is not None:
+            self.amd_status.setText(tr("set.amd_status_ok", gpu=adl.name))
+        elif not self.st.get("sensors.amd_enabled"):
+            self.amd_status.setText(tr("set.amd_status_disabled"))
+        elif any(g.vendor == "amd" for g in s.gpus):
+            self.amd_status.setText(tr("set.amd_status_unavailable"))
+        else:
+            self.amd_status.setText(tr("set.amd_status_none"))
 
     # ---- Schwellen ---------------------------------------------------------
     def _build_thresholds(self):

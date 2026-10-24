@@ -98,6 +98,7 @@ SCHEMA: dict[str, Field] = {
     # Messung
     "monitor.interval_ms": Field(500, int, min=250, max=10000),
     "monitor.background_interval_ms": Field(5000, int, min=1000, max=60000),
+    "sensors.amd_enabled": Field(True, bool),
     "sensors.lhm_enabled": Field(True, bool),
     "sensors.lhm_port": Field(8085, int, min=1, max=65535),
     # Warnschwellen

@@ -28,7 +28,11 @@ class GpuSample:
     clock_mhz: float | None = None
     power_w: float | None = None
     fan_pct: float | None = None
-    source: str = ""               # pdh, nvml, lhm
+    hotspot_temp: float | None = None  # °C (heißester Punkt des Grafikchips)
+    mem_temp: float | None = None      # °C (Grafikspeicher)
+    mem_clock_mhz: float | None = None
+    fan_rpm: float | None = None
+    source: str = ""               # pdh, nvml, adl, lhm
 
 
 @dataclass

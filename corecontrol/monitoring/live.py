@@ -45,10 +45,11 @@ class LiveStore:
 class _Worker(QObject):
     sampled = Signal(object)
 
-    def __init__(self, interval_ms: int, lhm_enabled: bool, lhm_port: int):
+    def __init__(self, interval_ms: int, lhm_enabled: bool, lhm_port: int, amd_enabled: bool = True, amd_probe=None):
         super().__init__()
         self.interval_ms = interval_ms
         self.lhm_enabled, self.lhm_port = lhm_enabled, lhm_port
+        self.amd_enabled, self.amd_probe = amd_enabled, amd_probe
         self.collector: Collector | None = None
         self.timer: QTimer | None = None
         self.consumers: list[Callable[[Sample], None]] = []
@@ -56,7 +57,7 @@ class _Worker(QObject):
     @Slot()
     def start(self) -> None:
         try:
-            self.collector = Collector(self.lhm_enabled, self.lhm_port)
+            self.collector = Collector(self.lhm_enabled, self.lhm_port, self.amd_enabled, self.amd_probe)
         except Exception:
             log.exception("Messung konnte nicht gestartet werden")
             return
@@ -93,6 +94,12 @@ class _Worker(QObject):
         if self.collector is not None:
             self.collector.set_lhm(enabled, port)
 
+    @Slot(bool)
+    def set_amd(self, enabled: bool) -> None:
+        self.amd_enabled = enabled
+        if self.collector is not None:
+            self.collector.set_amd(enabled)
+
     @Slot()
     def stop(self) -> None:
         if self.timer:
@@ -107,19 +114,22 @@ class Sampler(QObject):
     sampled = Signal(object)
     _set_interval = Signal(int)
     _set_lhm = Signal(bool, int)
+    _set_amd = Signal(bool)
     _stop = Signal()
 
-    def __init__(self, interval_ms: int = 500, lhm_enabled: bool = True, lhm_port: int = 8085):
+    def __init__(self, interval_ms: int = 500, lhm_enabled: bool = True, lhm_port: int = 8085,
+                 amd_enabled: bool = True, amd_probe=None):
         super().__init__()
         self.store = LiveStore()
         self.thread = QThread()
         self.thread.setObjectName("sampler")
-        self.worker = _Worker(interval_ms, lhm_enabled, lhm_port)
+        self.worker = _Worker(interval_ms, lhm_enabled, lhm_port, amd_enabled, amd_probe)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.start)
         self.worker.sampled.connect(self._on_sample)
         self._set_interval.connect(self.worker.set_interval)
         self._set_lhm.connect(self.worker.set_lhm)
+        self._set_amd.connect(self.worker.set_amd)
         self._stop.connect(self.worker.stop, Qt.ConnectionType.BlockingQueuedConnection)
         self.worker.consumers.append(self.store.add)
 
@@ -138,6 +148,9 @@ class Sampler(QObject):
 
     def set_lhm(self, enabled: bool, port: int) -> None:
         self._set_lhm.emit(bool(enabled), int(port))
+
+    def set_amd(self, enabled: bool) -> None:
+        self._set_amd.emit(bool(enabled))
 
     def stop(self) -> None:
         if self.thread.isRunning():

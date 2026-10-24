@@ -65,7 +65,8 @@ kein WLAN). Gelesen wurden u. a.:
 
 - **Nicht auf echter PC-Hardware getestet.** Alles oben lief auf Linux und einer Windows-Server-VM ohne
   Grafikkarte, Lüfter, Akku und WLAN. Ungetestet sind insbesondere:
-  NVIDIA-Werte über NVML, AMD/Intel-Grafikkarten, LibreHardwareMonitor-Anbindung mit echten Sensoren, WLAN-Anzeige,
+  NVIDIA-Werte über NVML, AMD-Treiberwerte über ADL (ab 0.1.2; nur mit simulierten Treiberwerten getestet),
+  Intel-Grafikkarten, LibreHardwareMonitor-Anbindung mit echten Sensoren, WLAN-Anzeige,
   Laptops, Windows 10, Bildschirmskalierung über 100 %, Mehrbildschirm, Tray-Benachrichtigungen,
   echtes Verschieben in den Papierkorb unter Windows, Autostart-Umschalten, Adminfunktionen.
 - **Oberfläche nur automatisch geprüft** (ohne Bildschirm). Ob Animationen auf schwachen PCs flüssig wirken,

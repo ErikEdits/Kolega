@@ -16,6 +16,13 @@ KIND_ORDER = ["temperature", "fan", "load", "clock", "power", "voltage", "contro
 
 
 
+def _fan_text(g) -> str:
+    if g.fan_rpm is not None:
+        rpm = _nowrap(tr("mon.rpm", n=fmt.number(g.fan_rpm, 0)))
+        return f"{rpm} ({fmt.pct(g.fan_pct)})" if g.fan_pct is not None else rpm
+    return fmt.pct(g.fan_pct)
+
+
 def _nowrap(text: str) -> str:
     """Kurze Werte wie „84,8 MB / 5,5 GB“ nicht mitten im Wert umbrechen."""
     return text.replace(" ", "\u00a0")
@@ -161,16 +168,26 @@ class MonitoringPage(Page):
         if g is None:
             self.gpu_info.set_rows([(tr("mon.gpu"), tr("common.na"))])
         else:
-            self.gpu_info.set_rows([
+            rows = [
                 (tr("common.name"), g.name),
                 (tr("mon.load"), fmt.pct(g.util)),
                 (tr("mon.vram"), _nowrap(f"{fmt.bytes_(g.vram_used)} / {fmt.bytes_(g.vram_total)}") if g.vram_used is not None else tr("common.na")),
                 (tr("mon.temp"), fmt.temp(g.temp)),
-                (tr("mon.clock"), fmt.mhz(g.clock_mhz)),
-                (tr("mon.power"), f"{fmt.number(g.power_w, 0)} W" if g.power_w is not None else tr("common.na")),
-                (tr("mon.fan"), fmt.pct(g.fan_pct)),
-                (tr("mon.source"), g.source.upper() if g.source else tr("common.na")),
-            ])
+            ]
+            if g.hotspot_temp is not None:
+                rows.append((tr("mon.hotspot"), fmt.temp(g.hotspot_temp)))
+            if g.mem_temp is not None:
+                rows.append((tr("mon.mem_temp"), fmt.temp(g.mem_temp)))
+            rows.append((tr("mon.clock"), fmt.mhz(g.clock_mhz)))
+            if g.mem_clock_mhz is not None:
+                rows.append((tr("mon.mem_clock"), fmt.mhz(g.mem_clock_mhz)))
+            rows += [
+                (tr("mon.board_power") if g.source == "adl" else tr("mon.power"),
+                 f"{fmt.number(g.power_w, 0)} W" if g.power_w is not None else tr("common.na")),
+                (tr("mon.fan"), _fan_text(g)),
+                (tr("mon.source"), tr(f"mon.src.{g.source}") if g.source in ("adl", "nvml", "pdh", "lhm") else tr("common.na")),
+            ]
+            self.gpu_info.set_rows(rows)
         self.temp_hint.setVisible(s.cpu_temp is None)
         self._sensor_tick += 1
         if self._sensor_tick % 2 == 1:
