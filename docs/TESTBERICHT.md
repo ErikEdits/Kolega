@@ -37,7 +37,7 @@ kein WLAN). Gelesen wurden u. a.:
 | Bereich | Ergebnis |
 |---|---|
 | Hardware (WMI, Registry) | Windows-Version mit Build/Edition, CPU, Mainboard/BIOS, 2 RAM-Module, Grafikadapter mit Treiber, 2 NVMe-Laufwerke mit Zustand „fehlerfrei“, Laufwerksbelegung, 1 Gerät ohne Treiber erkannt (in 273 ms) |
-| Live-Messung | CPU-Last und -Takt, RAM, Datenträgeraktivität, Netzwerk, Prozessanzahl; GPU über PDH-Zähler; LibreHardwareMonitor korrekt als „läuft nicht“ erkannt |
+| Live-Messung | CPU-Last und -Takt, RAM, Datenträgeraktivität, Netzwerk, Prozessanzahl; GPU über PDH-Zähler; LibreHardwareMonitor korrekt als „läuft nicht“ erkannt. Dauer je Messung (Version 0.1.1, 20 Messungen im 0,25-s-Takt): Median 3,6 ms, höchstens 3,8 ms |
 | Ereignisprotokolle | 18 Ereignisse in 7 Tagen gelesen und eingeordnet (46 ms) |
 | Netzwerk | Gateway, DNS (OK), Webtest (OK), Adapter mit 50 Gbit/s (aus WMI). Ping ist in Azure gesperrt; nach der Korrektur (Abschnitt 3) meldet die Diagnose das als Hinweis „Pings werden blockiert“ statt als „offline“ |
 | Autostart / Programme / Prozesse | 3 / 59 / 139 Einträge gelesen |
@@ -58,6 +58,8 @@ kein WLAN). Gelesen wurden u. a.:
 | Netzwerkgeschwindigkeit über 4,29 Gbit/s wurde als 4294 Mbit/s angezeigt | Windows-Selbsttest | Wert aus WMI |
 | IPv6-Adressen mit „::“ wurden in Berichten nicht entfernt | Test | Behoben |
 | Bei gesperrtem Ping stand im OK-Befund „Paketverlust 100 %“ | Windows-Selbsttest | Eigener Text ohne Ping-Werte |
+| Ohne laufendes LibreHardwareMonitor hielt die Suche danach jede zweite Messung bis zu 0,6 s auf; die Live-Anzeige lief dadurch ungleichmäßig | Rückmeldung vom ersten echten PC (Ryzen 5 7500F, Radeon RX 9070 XT) und Windows-Selbsttest | Suche im eigenen Thread, nur alle 10 s (Version 0.1.1) |
+| Zeitachsen-Beschriftungen überlappten sich in schmalen Diagrammen | Bildschirmfoto vom echten PC | Beschriftung auf runden Uhrzeiten mit Mindestabstand, Test |
 
 ## 4. Bekannte Einschränkungen
 
