@@ -16,7 +16,7 @@ Risiken hat eine Lösung. CoreControl ändert nichts ohne deine ausdrückliche B
 |---|---|
 | **Systemdiagnose** (Hauptfunktion) | Regelbasierte Prüfung von Temperaturen, Auslastung, Arbeitsspeicher, Speicherplatz, Laufwerkszustand, Windows-Fehlerprotokollen (Bluescreens, unerwartete Neustarts, Hardware- und Laufwerksfehler, Grafiktreiber-Abstürze), Geräten mit Problemen, Treiberalter, Windows-Version, Autostart, Netzwerk. Jeder Befund mit Ursachen, Empfehlungen, Risiken und Angabe, wie sicher die Diagnose ist. |
 | **Dashboard** | CPU, GPU, RAM, Speicher mit Ringanzeigen, Auslastungsdiagramm, Temperaturen, Lüfter, Schnellaktionen, letzte Ereignisse, Netzwerk. Kacheln ein-/ausblendbar und sortierbar. |
-| **Live-Monitoring** | Diagramme für CPU, RAM, GPU, Temperaturen, Datenträger, Netzwerk (ca. 1×/Sekunde, einstellbar), Tabelle aller Sensoren. |
+| **Live-Monitoring** | Diagramme für CPU, RAM, GPU, Temperaturen, Datenträger, Netzwerk (2×/Sekunde, einstellbar von 0,25 s bis 10 s), Tabelle aller Sensoren. |
 | **Hardware & Treiber** | Windows-Version, CPU, Mainboard, BIOS, RAM-Riegel, Grafikkarten mit Treiberversion/-datum, Laufwerke mit Zustand, Treiberliste, Links zu offiziellen Treiberseiten. |
 | **Fehlerprotokolle** | Windows-Ereignisse verständlich gruppiert und erklärt. |
 | **Verlauf** | Diagramme über Stunden, Tage, Wochen (Minuten-/Stundenmittel, Aufbewahrung einstellbar). |

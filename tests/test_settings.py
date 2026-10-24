@@ -24,7 +24,7 @@ def test_corrupt_json_is_backed_up_and_defaults_used(tmp_path):
     s = Settings(p)
     warnings = s.load()
     assert warnings == ["invalid:file"]
-    assert s.get("monitor.interval_ms") == 1000
+    assert s.get("monitor.interval_ms") == SCHEMA["monitor.interval_ms"].default
     assert (tmp_path / "settings.broken.json").exists()
 
 
@@ -101,7 +101,7 @@ def test_import_partial_file_only_changes_given_keys(tmp_path):
     warnings = s.import_from(f)
     assert s.get("ui.theme") == "light"
     assert s.get("ui.language") == "en"
-    assert s.get("monitor.interval_ms") == 1000
+    assert s.get("monitor.interval_ms") == SCHEMA["monitor.interval_ms"].default
     assert "invalid:monitor.interval_ms" in warnings
 
 
@@ -110,3 +110,18 @@ def test_get_returns_copies(tmp_path):
     tiles = s.get("dashboard.tiles")
     tiles.append("x")
     assert "x" not in s.get("dashboard.tiles")
+
+
+def test_old_default_interval_is_migrated_but_own_choice_kept(tmp_path):
+    p = tmp_path / "settings.json"
+    p.write_text(json.dumps({"version": 1, "values": {"monitor.interval_ms": 1000}}), encoding="utf-8")
+    s = Settings(p)
+    s.load()
+    assert s.get("monitor.interval_ms") == 500
+    p.write_text(json.dumps({"version": 1, "values": {"monitor.interval_ms": 2000}}), encoding="utf-8")
+    s.load()
+    assert s.get("monitor.interval_ms") == 2000
+    # Ab Version 2 bleibt auch 1000 erhalten (bewusst gewählt)
+    p.write_text(json.dumps({"version": 2, "values": {"monitor.interval_ms": 1000}}), encoding="utf-8")
+    s.load()
+    assert s.get("monitor.interval_ms") == 1000

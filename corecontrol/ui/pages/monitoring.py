@@ -15,6 +15,11 @@ from corecontrol.ui.widgets.common import Card, KeyValueGrid, label
 KIND_ORDER = ["temperature", "fan", "load", "clock", "power", "voltage", "control", "data", "other"]
 
 
+
+def _nowrap(text: str) -> str:
+    """Kurze Werte wie „84,8 MB / 5,5 GB“ nicht mitten im Wert umbrechen."""
+    return text.replace(" ", "\u00a0")
+
 class MonitoringPage(Page):
     page_id = "monitoring"
     title_key = "mon.title"
@@ -149,7 +154,7 @@ class MonitoringPage(Page):
         self.ram_info.set_rows([
             (tr("mon.used"), fmt.bytes_(s.ram_used)),
             (tr("mon.total"), fmt.bytes_(s.ram_total)),
-            (tr("mon.swap"), f"{fmt.bytes_(s.swap_used)} / {fmt.bytes_(s.swap_total)}" if s.swap_total else tr("common.na")),
+            (tr("mon.swap"), _nowrap(f"{fmt.bytes_(s.swap_used)} / {fmt.bytes_(s.swap_total)}") if s.swap_total else tr("common.na")),
             (tr("mon.load"), fmt.pct(s.ram_percent)),
         ])
         g = s.primary_gpu
@@ -159,7 +164,7 @@ class MonitoringPage(Page):
             self.gpu_info.set_rows([
                 (tr("common.name"), g.name),
                 (tr("mon.load"), fmt.pct(g.util)),
-                (tr("mon.vram"), f"{fmt.bytes_(g.vram_used)} / {fmt.bytes_(g.vram_total)}" if g.vram_used is not None else tr("common.na")),
+                (tr("mon.vram"), _nowrap(f"{fmt.bytes_(g.vram_used)} / {fmt.bytes_(g.vram_total)}") if g.vram_used is not None else tr("common.na")),
                 (tr("mon.temp"), fmt.temp(g.temp)),
                 (tr("mon.clock"), fmt.mhz(g.clock_mhz)),
                 (tr("mon.power"), f"{fmt.number(g.power_w, 0)} W" if g.power_w is not None else tr("common.na")),

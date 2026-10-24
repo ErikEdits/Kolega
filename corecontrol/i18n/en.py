@@ -177,7 +177,7 @@ STRINGS: dict[str, object] = {
     "set.move_down": "Move down",
     "set.monitoring": "Measurement & sensors",
     "set.interval": "Update interval",
-    "set.interval_desc": "How often live values are measured while the window is visible.",
+    "set.interval_desc": "How often live values are measured while the window is visible. Default 0.5 s; 0.25 s is the smoothest but uses a little more CPU time.",
     "set.bg_interval": "Background interval",
     "set.bg_interval_desc": "Measure less often while CoreControl is minimized – saves resources.",
     "set.lhm": "Use LibreHardwareMonitor",

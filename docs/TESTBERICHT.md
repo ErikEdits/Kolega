@@ -83,7 +83,7 @@ kein WLAN). Gelesen wurden u. a.:
 | # | Test | Erwartung |
 |---|---|---|
 | 1 | EXE starten (SmartScreen-Hinweis bestätigen) | Fenster erscheint in wenigen Sekunden |
-| 2 | Dashboard 1 Minute beobachten | Werte ändern sich ca. jede Sekunde, nichts ruckelt |
+| 2 | Dashboard 1 Minute beobachten | Werte ändern sich 2× pro Sekunde, nichts ruckelt |
 | 3 | Systemdiagnose starten | Ergebnis nach < 1 Minute; Befunde plausibel? Falsche Befunde bitte melden |
 | 4 | LibreHardwareMonitor als Admin starten | Nach wenigen Sekunden CPU-Temperatur und Lüfter sichtbar |
 | 5 | Monitoring mit Spiel/Last | Diagramme laufen weich, GPU-Last passt zum Task-Manager |

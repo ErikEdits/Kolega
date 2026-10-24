@@ -36,9 +36,13 @@ tests/           Automatische Tests (pytest)
 
 ## Wichtige Abläufe
 
-**Live-Messung.** Ein eigener Thread (`monitoring/live.py`) misst im eingestellten Intervall (Standard 1 s, im
+**Live-Messung.** Ein eigener Thread (`monitoring/live.py`) misst im eingestellten Intervall (Standard 0,5 s, im
 Hintergrund 5 s) und schickt fertige Messpunkte an die Oberfläche. Die Oberfläche wartet nie auf Messungen.
 Jede Messquelle ist einzeln abgesichert: Fällt eine aus, fehlt nur dieser Wert („Nicht verfügbar“).
+LibreHardwareMonitor wird in einem weiteren Thread gelesen (`LhmPoller`), höchstens 1×/s, und wenn es nicht
+läuft nur alle 10 s. Unter Windows dauert schon der Verbindungsversuch zu einem geschlossenen lokalen Port bis
+zu ~1 s; das würde sonst die ganze Messung aufhalten.
+Diagramme zeichnen nach Uhrzeit über ein festes Zeitfenster (z. B. 120 s), unabhängig vom Messtakt.
 
 **Diagnose.** `diagnostics/engine.py` sammelt Daten (Hardware, 30 Tage Ereignisprotokoll, Live-Werte der letzten
 Minute bzw. eine kurze Messung, Prozesse, Autostart, Netzwerktest) in einem Hintergrund-Task mit Fortschritt und Abbruch. Danach laufen reine
