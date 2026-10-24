@@ -6,7 +6,7 @@ CoreControl prüft deinen PC, zeigt Live-Werte und erklärt gefundene Probleme i
 Was wurde erkannt, wie wichtig ist es, was könnte die Ursache sein, was kannst du tun und welche
 Risiken hat eine Lösung. CoreControl ändert nichts ohne deine ausdrückliche Bestätigung.
 
-> Status: **Version 0.1.1 (Testversion)**. Getestet automatisch auf Windows Server (GitHub) und
+> Status: **Version 0.1.2 (Testversion)**. Getestet automatisch auf Windows Server (GitHub) und
 > Linux, noch **nicht auf echten Windows-10/11-PCs mit unterschiedlicher Hardware**. Siehe
 > [Testbericht](docs/TESTBERICHT.md).
 
@@ -34,7 +34,8 @@ Risiken hat eine Lösung. CoreControl ändert nichts ohne deine ausdrückliche B
 3. Windows zeigt beim ersten Start evtl. „Der Computer wurde durch Windows geschützt“, weil die EXE nicht
    kostenpflichtig signiert ist: **„Weitere Informationen“ → „Trotzdem ausführen“**.
 
-Optional für CPU-Temperatur, Lüfter und Spannungen: das kostenlose
+Grafikkarten-Werte (Temperatur, Leistung, Takt, Lüfter) kommen bei NVIDIA- und AMD-Karten direkt aus dem Treiber.
+Optional für CPU-Temperatur, Mainboard-Lüfter und Spannungen: das kostenlose
 [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases) als Administrator
 starten. CoreControl liest die Werte dann mit; es installiert selbst keinen Treiber.
 

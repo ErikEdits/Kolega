@@ -95,7 +95,8 @@ def main(argv: list[str] | None = None) -> int:
 
     ctx = AppContext(settings)
     ctx.sampler = Sampler(settings.get("monitor.interval_ms"), settings.get("sensors.lhm_enabled"),
-                          settings.get("sensors.lhm_port"))
+                          settings.get("sensors.lhm_port"), settings.get("sensors.amd_enabled"),
+                          paths.data_dir() / "amd_adl.probe")
     try:
         from corecontrol.history.store import HistoryRecorder, HistoryStore
 
@@ -207,6 +208,8 @@ def _wire_settings(ctx, window) -> None:
             ctx.sampler.set_interval(st.get("monitor.interval_ms" if visible else "monitor.background_interval_ms"))
         elif key in ("sensors.lhm_enabled", "sensors.lhm_port"):
             ctx.sampler.set_lhm(st.get("sensors.lhm_enabled"), st.get("sensors.lhm_port"))
+        elif key == "sensors.amd_enabled":
+            ctx.sampler.set_amd(bool(value))
         elif key == "tray.enabled":
             ctx.tray.set_enabled(bool(value))
         elif key == "auto.diagnosis_interval_h":

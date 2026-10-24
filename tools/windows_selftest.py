@@ -69,6 +69,26 @@ def _live():
         raise RuntimeError(f"Eine Messung dauerte {d[-1]:.0f} ms – zu langsam für eine flüssige Live-Anzeige")
 
 
+@section("AMD-Treiber (ADL)")
+def _amd():
+    from corecontrol.monitoring import amd
+
+    try:
+        r = amd.AdlReader()
+    except (OSError, FileNotFoundError) as exc:
+        print(f"nicht verfügbar: {exc}")
+        return
+    try:
+        for g in r.gpus:
+            t0 = time.perf_counter()
+            vals = r.read(g)
+            print(f"  {g.name} (Index {g.index}, Overdrive {g.overdrive}): {vals} in {(time.perf_counter() - t0) * 1000:.1f} ms")
+        if not r.gpus:
+            print("keine AMD-Grafikkarte")
+    finally:
+        r.close()
+
+
 @section("GPU-Adapter (DXGI)")
 def _dxgi():
     from corecontrol.monitoring.gpu import enumerate_adapters

@@ -296,3 +296,26 @@ def test_settings_import_flow(window, dialogs, tmp_path, monkeypatch):
     page._import()
     assert ctx.settings.get("thresholds.ram_warn") == 77
     assert dialogs["info"] and not dialogs["warn"]
+
+
+def test_amd_driver_values_are_shown(window):
+    from corecontrol.core.logging_setup import recent_errors
+    from corecontrol.monitoring.models import GpuSample, Sample
+
+    w, ctx, qapp = window
+    g = GpuSample(name="AMD Radeon RX 9070 XT", key="adl0", vendor="amd", util=6.0, temp=51.0, hotspot_temp=60.0,
+                  mem_temp=52.0, power_w=47.0, clock_mhz=2505.0, mem_clock_mhz=1259.0, fan_rpm=0.0,
+                  vram_used=1590 * 1024 * 1024, vram_total=16 * 1024**3, source="adl")
+    s = Sample(ts=time.time(), cpu_percent=7.0, ram_percent=50.0, ram_total=32 * 1024**3, ram_used=16 * 1024**3,
+               gpus=[g], lhm_status="not_running")
+    before = len(recent_errors())
+    for pid in ("dashboard", "monitoring", "settings"):
+        w.navigate(pid)
+        _wait(qapp, 0.1)
+        w.page(pid).on_sample(s)
+    mon = w.page("monitoring")
+    shown = {k.text(): v.text() for k, v in mon.gpu_info._rows}
+    assert shown["Hotspot"] == "60 °C" and shown["Platinenleistung"] == "47 W"
+    assert shown["Datenquelle"] == "AMD-Treiber" and shown["Lüfter"].startswith("0")
+    assert "RX 9070 XT" in w.page("settings").amd_status.text()
+    assert len(recent_errors()) == before

@@ -9,8 +9,10 @@ import time
 
 import psutil
 
+from pathlib import Path
+
 from corecontrol.core.platform import IS_WINDOWS
-from corecontrol.monitoring import lhm
+from corecontrol.monitoring import amd, lhm
 from corecontrol.monitoring.models import GpuSample, Sample
 
 log = logging.getLogger(__name__)
@@ -77,7 +79,8 @@ class LhmPoller:
 
 
 class Collector:
-    def __init__(self, lhm_enabled: bool = True, lhm_port: int = 8085):
+    def __init__(self, lhm_enabled: bool = True, lhm_port: int = 8085, amd_enabled: bool = True,
+                 amd_probe: Path | None = None):
         self._last_disk = None
         self._last_net = None
         self._last_ts = None
@@ -88,6 +91,9 @@ class Collector:
         self.lhm_enabled = lhm_enabled
         self._lhm_port = lhm_port
         self._lhm: LhmPoller | None = LhmPoller(lhm_port) if lhm_enabled else None
+        self.amd_enabled = amd_enabled
+        self._amd_probe = amd_probe
+        self._amd: amd.AdlReader | None = None
         self._errors: dict[str, int] = {}
         self._init_sources()
 
@@ -130,6 +136,23 @@ class Collector:
                 self._base_mhz = float(winreg.QueryValueEx(k, "~MHz")[0])
         except Exception:
             self._base_mhz = None
+        if self.amd_enabled and any(a.vendor == "amd" for a in self._adapters):
+            self._amd = amd.open_guarded(self._amd_probe)
+
+    def set_amd(self, enabled: bool) -> None:
+        """AMD-Treiberwerte ein-/ausschalten. Einschalten hebt auch den Absturzschutz auf."""
+        self.amd_enabled = enabled
+        if self._amd is not None and not enabled:
+            self._amd.close()
+            self._amd = None
+        if enabled and self._amd is None and IS_WINDOWS:
+            if self._amd_probe is not None:
+                try:
+                    self._amd_probe.unlink()
+                except OSError:
+                    pass
+            if any(a.vendor == "amd" for a in self._adapters):
+                self._amd = amd.open_guarded(self._amd_probe)
 
     def set_lhm(self, enabled: bool, port: int) -> None:
         self.lhm_enabled = enabled
@@ -200,6 +223,8 @@ class Collector:
             self._guard("cpufreq", lambda: self._cpu_freq_generic(s))
         if self._nvml is not None:
             self._guard("nvml", lambda: self._sample_nvml(s))
+        if self._amd is not None:
+            self._guard("amd", lambda: self._sample_amd(s))
         if self.lhm_enabled and self._lhm is not None:
             status, sensors = self._lhm.latest()
             s.lhm_status, s.sensors = status, list(sensors)
@@ -259,10 +284,30 @@ class Collector:
                 target.vram_used, target.vram_total = vals["vram_used"], vals["vram_total"]
             target.source = "nvml"
 
+    def _sample_amd(self, s: Sample) -> None:
+        r = self._amd
+        for gpu in r.gpus:
+            vals = r.read(gpu)
+            if not vals:
+                continue
+            target = next((g for g in s.gpus if g.vendor == "amd" and amd.same_gpu(g.name, gpu.name)), None)
+            if target is None:
+                amd_gpus = [g for g in s.gpus if g.vendor == "amd"]
+                if len(r.gpus) == 1 and len(amd_gpus) == 1:
+                    target = amd_gpus[0]
+            if target is None:
+                target = GpuSample(name=gpu.name, key=f"adl{gpu.index}", vendor="amd")
+                s.gpus.append(target)
+            apply_amd_values(target, vals)
+            if s.cpu_temp is None and "temp_cpu" in vals:
+                s.cpu_temp = vals["temp_cpu"]
+
     def _apply_lhm(self, s: Sample) -> None:
         if not s.sensors:
             return
-        s.cpu_temp = lhm.pick_cpu_temp(s.sensors)
+        cpu_temp = lhm.pick_cpu_temp(s.sensors)
+        if cpu_temp is not None:
+            s.cpu_temp = cpu_temp
         s.cpu_power_w = lhm.pick_cpu_power(s.sensors)
         for g in s.gpus:
             if g.temp is None:
@@ -274,6 +319,9 @@ class Collector:
                 s.gpus.append(GpuSample(name=gpu_hw, key="lhm", temp=t, source="lhm"))
 
     def close(self) -> None:
+        if self._amd is not None:
+            self._amd.close()
+            self._amd = None
         if self._lhm is not None:
             self._lhm.close()
             self._lhm = None
@@ -281,6 +329,27 @@ class Collector:
             self._pdh.close()
         if self._nvml:
             self._nvml.close()
+
+
+def apply_amd_values(target: GpuSample, vals: dict[str, float]) -> None:
+    """Überträgt Werte aus dem AMD-Treiber; fehlende Werte lassen vorhandene (z. B. aus PDH) stehen."""
+    def put(attr: str, value: float | None) -> None:
+        if value is not None:
+            setattr(target, attr, value)
+
+    put("util", vals.get("activity_gfx"))
+    put("temp", vals.get("temp_edge"))
+    put("hotspot_temp", vals.get("temp_hotspot"))
+    put("mem_temp", vals.get("temp_mem"))
+    put("power_w", vals.get("board_power", vals.get("asic_power")))
+    put("clock_mhz", vals.get("gfx_clock"))
+    put("mem_clock_mhz", vals.get("mem_clock"))
+    put("fan_rpm", vals.get("fan_rpm"))
+    put("fan_pct", vals.get("fan_pct"))
+    if "vram_used_mb" in vals:
+        target.vram_used = int(vals["vram_used_mb"] * 1024 * 1024)
+    if any(k in vals for k in amd.PMLOG):
+        target.source = "adl"  # nur, wenn wirklich Sensorwerte aus dem Treiber kamen
 
 
 def _same_gpu(a: str, b: str) -> bool:
