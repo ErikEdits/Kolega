@@ -6,7 +6,7 @@ CoreControl prüft deinen PC, zeigt Live-Werte und erklärt gefundene Probleme i
 Was wurde erkannt, wie wichtig ist es, was könnte die Ursache sein, was kannst du tun und welche
 Risiken hat eine Lösung. CoreControl ändert nichts ohne deine ausdrückliche Bestätigung.
 
-> Status: **Version 0.1.0 (erste Testversion)**. Getestet automatisch auf Windows Server (GitHub) und
+> Status: **Version 0.1.1 (Testversion)**. Getestet automatisch auf Windows Server (GitHub) und
 > Linux, noch **nicht auf echten Windows-10/11-PCs mit unterschiedlicher Hardware**. Siehe
 > [Testbericht](docs/TESTBERICHT.md).
 
